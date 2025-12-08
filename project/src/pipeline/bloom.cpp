@@ -111,7 +111,7 @@ namespace pipeline
 			const auto filter_pass_result = run_filter_pass(
 				command_buffer,
 				light_buffer_target.light_texture.current(),
-				bloom_target.get_downsample_chain(0),
+				bloom_target.get_filter_texture(),
 				auto_exposure_target.get_current_frame().result_buffer,
 				param,
 				swapchain_size
@@ -127,7 +127,7 @@ namespace pipeline
 		command_buffer.pop_debug_group();
 
 		command_buffer.push_debug_group("Blur and blit passes");
-		for (const auto upsample_mipmap_level : std::views::iota(0u, target::Bloom::downsample_mip_count - 2))
+		for (const auto upsample_mipmap_level : std::views::iota(0u, target::Bloom::upsample_mip_count))
 		{
 			const auto blur_pass_result =
 				run_blur_pass(command_buffer, bloom_target, upsample_mipmap_level, swapchain_size);
@@ -195,7 +195,7 @@ namespace pipeline
 	) const noexcept
 	{
 		const SDL_GPUTextureSamplerBinding input_binding =
-			{.texture = bloom_target.get_downsample_chain(upsample_mip_level + 1), .sampler = linear_sampler};
+			{.texture = bloom_target.get_downsample_chain(upsample_mip_level), .sampler = linear_sampler};
 
 		const SDL_GPUStorageTextureReadWriteBinding output_binding = {
 			.texture = bloom_target.get_upsample_chain(upsample_mip_level),
@@ -243,7 +243,7 @@ namespace pipeline
 		};
 
 		const SDL_GPUBlitRegion dst_region = {
-			.texture = bloom_target.get_downsample_chain(upsample_mip_level + 2),
+			.texture = bloom_target.get_downsample_chain(upsample_mip_level + 1),
 			.mip_level = 0,
 			.layer_or_depth_plane = 0,
 			.x = 0,
@@ -278,7 +278,7 @@ namespace pipeline
 		const auto dst_size = src_size / 2u;
 
 		const SDL_GPUBlitRegion src_region = {
-			.texture = bloom_target.get_downsample_chain(0),
+			.texture = bloom_target.get_filter_texture(),
 			.mip_level = 0,
 			.layer_or_depth_plane = 0,
 			.x = 0,
@@ -288,7 +288,7 @@ namespace pipeline
 		};
 
 		const SDL_GPUBlitRegion dst_region = {
-			.texture = bloom_target.get_downsample_chain(1),
+			.texture = bloom_target.get_downsample_chain(0),
 			.mip_level = 0,
 			.layer_or_depth_plane = 0,
 			.x = 0,
@@ -304,7 +304,7 @@ namespace pipeline
 			.clear_color = {},
 			.flip_mode = SDL_FLIP_NONE,
 			.filter = SDL_GPU_FILTER_LINEAR,
-			.cycle = false,
+			.cycle = true,
 			.padding1 = 0,
 			.padding2 = 0,
 			.padding3 = 0
@@ -335,13 +335,13 @@ namespace pipeline
 		};
 
 		const SDL_GPUTextureSamplerBinding cur_downsample_binding =
-			{.texture = bloom_target.get_downsample_chain(upsample_mip_level + 1), .sampler = linear_sampler};
+			{.texture = bloom_target.get_downsample_chain(upsample_mip_level), .sampler = linear_sampler};
 
 		const SDL_GPUStorageTextureReadWriteBinding cur_upsample_binding = {
 			.texture = bloom_target.get_upsample_chain(upsample_mip_level),
 			.mip_level = 0,
 			.layer = 0,
-			.cycle = true,
+			.cycle = false,
 			.padding1 = 0,
 			.padding2 = 0,
 			.padding3 = 0

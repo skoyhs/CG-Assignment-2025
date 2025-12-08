@@ -23,7 +23,7 @@ namespace target
 		};
 
 		static constexpr size_t downsample_mip_count = 9;
-		static constexpr size_t upsample_mip_count = downsample_mip_count - 2;
+		static constexpr size_t upsample_mip_count = downsample_mip_count - 1;
 
 		Bloom() = default;
 
@@ -44,6 +44,13 @@ namespace target
 		const gpu::Texture& get_downsample_chain(size_t mip_level) const noexcept;
 
 		///
+		/// @brief Get filter texture
+		///
+		/// @return Filter texture
+		///
+		const gpu::Texture& get_filter_texture() const noexcept;
+
+		///
 		/// @brief Get upsample chain
 		///
 		/// @param mip_level Mipmap level
@@ -54,6 +61,7 @@ namespace target
 	  private:
 
 		glm::u32vec2 size = {0, 0};
+		std::unique_ptr<gpu::Texture> filter_texture;
 		std::vector<gpu::Texture> downsample_chain, upsample_chain;
 
 	  public:

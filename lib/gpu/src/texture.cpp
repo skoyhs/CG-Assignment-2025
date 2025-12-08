@@ -12,6 +12,12 @@ namespace gpu
 	{
 		assert(device != nullptr);
 
+		if (create_info.width == 0
+			|| create_info.height == 0
+			|| create_info.layer_count_or_depth == 0
+			|| create_info.num_levels == 0)
+			return util::Error("Texture dimensions and mip levels must be greater than zero");
+
 		auto* const texture = SDL_CreateGPUTexture(device, &create_info);
 		if (texture == nullptr) RETURN_SDL_ERROR;
 

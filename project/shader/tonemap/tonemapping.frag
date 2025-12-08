@@ -32,8 +32,10 @@ void main()
     float exposure_mult_adjusted = exposure_mult * exposure;
 
     vec3 hdr_color =
-        (textureLod(light_buffer_tex, uv, 0).rgb + textureLod(bloom_tex, uv, 0).rgb * bloom_strength)
-            * exposure_mult_adjusted;
+        (
+            textureLod(light_buffer_tex, uv, 0).rgb * exposure_mult_adjusted 
+            + textureLod(bloom_tex, uv, 0).rgb * bloom_strength
+            );
     vec3 srgb_color = pow(agx(hdr_color), vec3(2.2));
 
     vec3 srgb_color_8bit = srgb_color * 254.9;
