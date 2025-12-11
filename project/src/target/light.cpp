@@ -6,6 +6,9 @@ namespace target
 	{
 		if (auto result = light_texture.resize_and_cycle(device, size); !result)
 			return result.error().forward("Resize light buffer texture failed");
+		if (auto result = ssgi_trace_texture.resize(device, size); !result)
+			return result.error().forward("Resize SSGI trace texture failed");
+
 		return {};
 	}
 }

@@ -22,7 +22,8 @@ class Logic
 	enum class Debug_mode
 	{
 		No_debug,
-		Show_AO
+		Show_AO,
+		Show_SSGI_trace
 	};
 
 	struct Result

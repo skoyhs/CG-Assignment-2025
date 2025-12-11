@@ -1,0 +1,384 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : enable
+#include "../common/gbuffer-storage.glsl"
+#include "../common/ndc-uv-conv.glsl"
+
+#extension GL_EXT_debug_printf : enable
+
+//============================================================
+
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(set = 0, binding = 0) uniform sampler2D luminance_tex;
+layout(set = 0, binding = 1) uniform sampler2D depth_tex;
+layout(set = 0, binding = 2) uniform usampler2D light_info_tex;
+layout(set = 0, binding = 3) uniform sampler2D blue_noise_tex;
+layout(set = 0, binding = 4) uniform sampler2D albedo_tex;
+
+layout(set = 1, binding = 0) uniform writeonly image2D ssgi_trace_out;
+
+layout(std140, set = 2, binding = 0) uniform Params
+{
+    mat4 inv_proj_mat;
+    mat4 proj_mat;
+    mat4 view_mat;
+
+    vec4 inv_proj_mat_col3;
+    vec4 inv_proj_mat_col4;
+
+    uvec2 resolution;
+    ivec2 time_noise;
+
+    vec2 near_plane_span; // Near plane span in view space, calculated by (right - middle, top - middle)
+    float near_plane;
+    float max_scene_distance;
+};
+
+//============================================================
+
+struct Ray
+{
+    vec3 origin;
+    vec3 direction;
+};
+
+vec3 ray_intersection(Ray ray1, Ray ray2)
+{
+    const vec3 origin_delta = ray2.origin - ray1.origin;
+
+    const float a = dot(ray1.direction, ray1.direction);
+    const float b = dot(ray1.direction, ray2.direction);
+    const float c = dot(ray2.direction, ray2.direction);
+    const float d = dot(ray1.direction, origin_delta);
+    const float e = dot(ray2.direction, origin_delta);
+
+    const vec2 t = inverse(mat2(a, b, -b, -c)) * vec2(d, e);
+
+    return ray1.origin + ray1.direction * t.x;
+}
+
+vec2 dda_step_direction(vec2 dir)
+{
+    const vec2 abs_dir = abs(dir.xy);
+    return abs_dir.x > abs_dir.y
+    ? vec2(sign(dir.x), dir.y / abs_dir.x) : vec2(dir.x / abs_dir.y, sign(dir.y));
+}
+
+vec3 reconstruct_view_pos_reverse_z(vec2 pixel_coord, float depth)
+{
+    const vec2 uv = pixel_coord / vec2(resolution);
+    const vec4 ndc_pos = vec4(uv_to_ndc(uv), depth, 1.0);
+    const vec4 view_pos_homo = inv_proj_mat * ndc_pos;
+    return view_pos_homo.xyz / view_pos_homo.w;
+}
+
+vec3 reconstruct_view_normal(vec3 world_normal)
+{
+    const vec4 world_normal_h = vec4(world_normal, 0.0);
+    const vec4 view_normal_h = view_mat * world_normal_h;
+    return view_normal_h.xyz;
+}
+
+vec3 select_march_direction(vec3 view_normal, vec3 view_dir, vec4 noise_unorm, float metalness, float roughness)
+{
+    return reflect(view_dir, view_normal);
+    // Sampling formulas (each uses two independent uniform variables u1,u2 in [0,1]):
+    // 1) GGX half-vector sampling (non-visible NDF inversion):
+    //    phi = 2*pi*u2
+    //    cosTheta = sqrt((1 - u1) / (1 + (alpha^2 - 1) * u1))
+    //    sinTheta = sqrt(1 - cosTheta^2)
+    //    H_tan = (sinTheta*cos(phi), sinTheta*sin(phi), cosTheta)
+    //    H = T*H_tan.x + B*H_tan.y + N*H_tan.z
+    //    L = reflect(view_dir, H)  // keep view_dir convention (camera -> surface)
+    // 2) Cosine-weighted hemisphere (diffuse):
+    //    r = sqrt(u1), phi = 2*pi*u2
+    //    x = r*cos(phi), y = r*sin(phi), z = sqrt(1-u1)
+    //    L = T*x + B*y + N*z
+
+    // We'll use three components from blue-noise: (u1,u2) for sampling and u3 for
+    // choosing between specular/diffuse (mixture). The per-strategy sampling formulas
+    // themselves only need two uniforms.
+    float u1 = noise_unorm.x;
+    float u2 = noise_unorm.y;
+    float u_branch = noise_unorm.z;
+
+    // mixture probability: favor specular for metals and for low roughness
+    float p_spec = clamp(metalness + (1.0 - roughness) * (1.0 - metalness), 0.0, 1.0);
+
+    // Build local frame
+    vec3 N = normalize(view_normal);
+    vec3 T;
+    if (abs(N.z) < 0.999)
+        T = normalize(cross(vec3(0.0, 0.0, 1.0), N));
+    else
+        T = normalize(cross(vec3(1.0, 0.0, 0.0), N));
+    vec3 B = cross(N, T);
+
+    // Branch: specular or diffuse
+    if (u_branch < p_spec)
+    {
+        // Specular: GGX half-vector sampling (non-visible inversion)
+        float alpha = max(roughness * roughness, 1e-4);
+        float a2 = alpha * alpha;
+
+        float phi = 2.0 * 3.14159265359 * u2;
+        float cosTheta = sqrt((1.0 - u1) / (1.0 + (a2 - 1.0) * u1));
+        float sinTheta = sqrt(max(0.0, 1.0 - cosTheta * cosTheta));
+
+        vec3 H_tan = vec3(sinTheta * cos(phi), sinTheta * sin(phi), cosTheta);
+        vec3 H = normalize(T * H_tan.x + B * H_tan.y + N * H_tan.z);
+
+        // Reflect the incident/view direction (camera->surface) around H
+        vec3 out_dir = reflect(view_dir, H);
+
+        // Make sure we march away from the surface; if not, flip to normal reflection
+        if (dot(out_dir, N) <= 0.0)
+            out_dir = reflect(view_dir, N);
+
+        return normalize(out_dir);
+    }
+    else
+    {
+        // Diffuse: cosine-weighted hemisphere sampling
+        float r = sqrt(max(0.0, u1));
+        float phi = 2.0 * 3.14159265359 * u2;
+        float x = r * cos(phi);
+        float y = r * sin(phi);
+        float z = sqrt(max(0.0, 1.0 - u1));
+
+        vec3 out_dir = normalize(T * x + B * y + N * z);
+        // out_dir is in camera->surface convention already
+        return out_dir;
+    }
+}
+
+vec2 uv_space_march_dir(vec3 march_dir, vec3 view_pos)
+{
+    vec4 clip0 = proj_mat * vec4(view_pos, 1.0);
+    clip0 /= clip0.w;
+
+    const float base_step = 0.02;
+    const float min_step = 0.1;
+    float step_len = max(length(view_pos) * base_step, min_step);
+    vec3 stepped = view_pos + march_dir * step_len;
+
+    vec4 clip1 = proj_mat * vec4(stepped, 1.0);
+    clip1 /= clip1.w;
+
+    vec2 ndc_delta = clip1.xy - clip0.xy;
+
+    vec2 pixel_delta = ndc_delta * vec2(0.5 * float(resolution.x), -0.5 * float(resolution.y));
+    return pixel_delta;
+}
+
+const float FLT_HIGHEST = 1e+38;
+const float FLT_LOWEST = -FLT_HIGHEST;
+
+// Precondition: ray must intersect the rectangle, and d components are non-zero (dda step ensures this)
+vec2 rayRectIntersection(vec2 P, vec2 d, vec4 rect) {
+    // rect = vec4(x_min, x_max, y_min, y_max)
+    float tx1 = (rect.x - P.x) / d.x;
+    float tx2 = (rect.y - P.x) / d.x;
+    float ty1 = (rect.z - P.y) / d.y;
+    float ty2 = (rect.w - P.y) / d.y;
+
+    float tx_enter = min(tx1, tx2);
+    float tx_exit = max(tx1, tx2);
+    float ty_enter = min(ty1, ty2);
+    float ty_exit = max(ty1, ty2);
+
+    tx_enter = isnan(tx_enter) || isinf(tx_enter) ? FLT_LOWEST : tx_enter;
+    ty_enter = isnan(ty_enter) || isinf(ty_enter) ? FLT_LOWEST : ty_enter;
+    tx_exit = isnan(tx_exit) || isinf(tx_exit) ? FLT_HIGHEST : tx_exit;
+    ty_exit = isnan(ty_exit) || isinf(ty_exit) ? FLT_HIGHEST : ty_exit;
+
+    float t_enter = max(tx_enter, ty_enter);
+    float t_exit = min(tx_exit, ty_exit);
+
+    return vec2(t_enter, t_exit);
+}
+
+vec4 get_hiz_pixelcoord_boundary(int hiz_level, ivec2 hiz_resolution, ivec2 hiz_coord)
+{
+    int hiz_size = 1 << hiz_level;
+    bvec2 coord_at_edge = equal(hiz_coord + 1, hiz_resolution);
+    vec2 size = mix(vec2(hiz_size), vec2(hiz_size) * 2, vec2(coord_at_edge));
+    return vec4(
+        vec2(hiz_coord * hiz_size),
+        vec2(hiz_coord * hiz_size) + size
+    ).xzyw;
+}
+
+const int MAX_HIZ_LEVEL = 8;
+const int MAX_ITER = 64;
+
+// retuning `a` component as hit/miss flag (1.0 = hit, 0.0 = miss)
+vec4 raytrace(vec3 view_pos, vec3 march_dir)
+{
+    const Ray march_ray = Ray(
+            view_pos,
+            march_dir
+        );
+
+    const vec2 pixel_delta = uv_space_march_dir(march_dir, view_pos);
+    const vec2 dda_step = dda_step_direction(pixel_delta);
+
+    vec2 traverse_screen_pixcoord = vec2(gl_GlobalInvocationID.xy) + 0.5;
+    const vec2 initial_screen_pixcoord = traverse_screen_pixcoord;
+    traverse_screen_pixcoord += dda_step; // Advance one step to avoid self-intersection
+
+    int hiz_level = 0;
+
+    const ivec2 resolution_ivec = ivec2(resolution);
+    const vec2 resolution_vec = vec2(resolution);
+
+    for (int iter = 0; iter < MAX_ITER; iter++)
+    {
+        /* Calculate Hi-Z Level Data */
+
+        const int hiz_level_size = 1 << hiz_level;
+        const float curr_step = hiz_level_size;
+        const ivec2 hiz_level_res = resolution_ivec >> hiz_level;
+
+        /* Fetch Hi-Z Depth */
+
+        const ivec2 hiz_texel_coord = ivec2(floor(traverse_screen_pixcoord)) >> hiz_level;
+        const float hiz_depth = texelFetch(depth_tex,
+                clamp(hiz_texel_coord, ivec2(0), hiz_level_res - 1),
+                hiz_level
+            ).r;
+
+        const vec4 hiz_depth_clip = fma(hiz_depth.xxxx, inv_proj_mat_col3, inv_proj_mat_col4);
+        const float hiz_depth_view_z = -hiz_depth_clip.z / hiz_depth_clip.w;
+
+        /* Compute Intersection with Hi-Z Pixel Boundary */
+
+        const vec4 hiz_boundary = get_hiz_pixelcoord_boundary(hiz_level, hiz_level_res, hiz_texel_coord);
+        const vec2 t_bounds = rayRectIntersection(initial_screen_pixcoord, dda_step, hiz_boundary);
+
+        const float t_enter = t_bounds.x;
+        const float t_exit = t_bounds.y;
+
+        const vec2 traverse_screen_enter_pixcoord = fma(dda_step, t_bounds.xx, initial_screen_pixcoord);
+        const vec2 traverse_screen_exit_pixcoord = fma(dda_step, t_bounds.yy, initial_screen_pixcoord);
+
+        const vec2 traverse_screen_enter_uv = traverse_screen_enter_pixcoord / resolution_vec;
+        const vec2 traverse_screen_exit_uv = traverse_screen_exit_pixcoord / resolution_vec;
+
+        const vec3 traverse_screen_enter_view_pos = vec3(uv_to_ndc(traverse_screen_enter_uv) * near_plane_span, -near_plane);
+        const vec3 traverse_screen_exit_view_pos = vec3(uv_to_ndc(traverse_screen_exit_uv) * near_plane_span, -near_plane);
+
+        const vec3 traverse_enter_view_pos = ray_intersection(Ray(vec3(0.0), traverse_screen_enter_view_pos), march_ray);
+        const vec3 traverse_exit_view_pos = ray_intersection(Ray(vec3(0.0), traverse_screen_exit_view_pos), march_ray);
+
+        const float traverse_enter_view_z = -traverse_enter_view_pos.z;
+        const float traverse_exit_view_z = -traverse_exit_view_pos.z;
+
+        const vec2 traverse_uv = traverse_screen_pixcoord / resolution_vec;
+
+        /* Precompute conditions */
+
+        const int next_level = min(hiz_level + 1, MAX_HIZ_LEVEL);
+        const int prev_level = max(hiz_level - 1, 0);
+        const vec2 next_pixcoord = fma(t_bounds.yy + 0.05, dda_step, initial_screen_pixcoord);
+
+        const bool next_pixcoord_out_of_bounds = any(greaterThanEqual(next_pixcoord, resolution_vec))
+                || any(lessThan(next_pixcoord, vec2(0.0)));
+
+        // Empty space, increase HIZ level
+        if (hiz_depth == 0.0)
+        {
+            if (next_pixcoord_out_of_bounds)
+                return vec4(0.0);
+
+            hiz_level = next_level;
+            traverse_screen_pixcoord = next_pixcoord;
+
+            continue;
+        }
+
+        // Step too far, view direction can't intersect
+        if ((traverse_enter_view_z - traverse_exit_view_z) * march_dir.z < 0.0)
+        {
+            if (hiz_level == 0) return vec4(0.0);
+            hiz_level = prev_level;
+            continue;
+        }
+
+        // Hit detected
+        if (hiz_depth_view_z <= max(traverse_exit_view_z, traverse_enter_view_z))
+        {
+            if (hiz_level == 0)
+            {
+                if (abs(traverse_enter_view_z - hiz_depth_view_z) / traverse_enter_view_z < 0.01)
+                {
+                    const vec2 ndc = uv_to_ndc(traverse_screen_enter_uv);
+                    const float mult = smoothstep(1.0, 0.97, max(abs(ndc.x), abs(ndc.y)));
+                    return vec4(textureLod(luminance_tex, traverse_screen_exit_uv, 0).rgb, mult);
+                }
+                else
+                    return vec4(0.0);
+            }
+
+            hiz_level = prev_level;
+            continue;
+        }
+
+        if (next_pixcoord_out_of_bounds) return vec4(0.0);
+
+        traverse_screen_pixcoord = next_pixcoord;
+        hiz_level = next_level;
+    }
+
+    return vec4(0.0);
+}
+
+void main()
+{
+    if (any(greaterThanEqual(gl_GlobalInvocationID.xy, resolution)))
+        return;
+
+    const ivec2 resolution_ivec = ivec2(resolution);
+    const ivec2 pixel_coord = ivec2(gl_GlobalInvocationID.xy);
+
+    /* Texture Fetch */
+
+    const vec4 noise_unorm = texture(
+            blue_noise_tex,
+            vec2(pixel_coord + time_noise) / 128
+        );
+    const uvec2 light_info = texelFetch(light_info_tex, pixel_coord, 0).rg;
+    const float depth = texelFetch(depth_tex, pixel_coord, 0).r;
+
+    if (depth == 0.0)
+    {
+        imageStore(ssgi_trace_out, pixel_coord, vec4(0.0, 0.0, 0.0, 1.0));
+        return;
+    }
+
+    /* Reconstruct Data */
+
+    const GBufferLighting lighting = unpack_gbuffer_lighting(light_info);
+
+    /* Direction Calculation */
+
+    const vec3 view_pos = reconstruct_view_pos_reverse_z(vec2(pixel_coord) + 0.5, depth); // Pixel position at view space
+    const vec3 view_normal = reconstruct_view_normal(lighting.normal); // Pixel Normal at view space
+    const vec3 view_dir = normalize(view_pos); // View direction from camera to pixel
+
+    const vec3 march_dir = normalize(select_march_direction(
+                view_normal,
+                view_dir,
+                noise_unorm,
+                lighting.metalness,
+                lighting.roughness
+            ));
+
+    const vec4 trace_result = raytrace(view_pos, march_dir);
+
+    const vec3 albedo = texture(albedo_tex, (vec2(pixel_coord) + 0.5) / vec2(resolution_ivec)).rgb;
+
+    imageStore(ssgi_trace_out, pixel_coord, vec4(trace_result.rgb * trace_result.a * albedo, trace_result.a));
+    return;
+}

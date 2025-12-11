@@ -56,6 +56,8 @@ void Logic::debug_control_ui() noexcept
 
 	if (ImGui::RadioButton("无调试", debug_mode == Debug_mode::No_debug)) debug_mode = Debug_mode::No_debug;
 	if (ImGui::RadioButton("显示 AO", debug_mode == Debug_mode::Show_AO)) debug_mode = Debug_mode::Show_AO;
+	if (ImGui::RadioButton("显示 SSGI 追踪", debug_mode == Debug_mode::Show_SSGI_trace))
+		debug_mode = Debug_mode::Show_SSGI_trace;
 
 	ImGui::DragFloat("时间", &time, 0.01f, 0.0f, 1000.0f);
 
