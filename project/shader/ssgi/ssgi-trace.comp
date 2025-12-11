@@ -43,19 +43,16 @@ struct Ray
     vec3 direction;
 };
 
-vec3 ray_intersection(Ray ray1, Ray ray2)
+vec3 ray_intersection(vec3 ray1_dir, Ray ray2)
 {
-    const vec3 origin_delta = ray2.origin - ray1.origin;
-
-    const float a = dot(ray1.direction, ray1.direction);
-    const float b = dot(ray1.direction, ray2.direction);
+    const float a = dot(ray1_dir, ray1_dir);
+    const float b = dot(ray1_dir, ray2.direction);
     const float c = dot(ray2.direction, ray2.direction);
-    const float d = dot(ray1.direction, origin_delta);
-    const float e = dot(ray2.direction, origin_delta);
+    const float d = dot(ray1_dir, ray2.origin);
+    const float e = dot(ray2.direction, ray2.origin);
 
-    const vec2 t = inverse(mat2(a, b, -b, -c)) * vec2(d, e);
-
-    return ray1.origin + ray1.direction * t.x;
+    const float t1 = (-c * d + b * e) / (b * b - a * c);
+    return ray1_dir * t1;
 }
 
 vec2 dda_step_direction(vec2 dir)
@@ -82,75 +79,16 @@ vec3 reconstruct_view_normal(vec3 world_normal)
 
 vec3 select_march_direction(vec3 view_normal, vec3 view_dir, vec4 noise_unorm, float metalness, float roughness)
 {
-    return reflect(view_dir, view_normal);
-    // Sampling formulas (each uses two independent uniform variables u1,u2 in [0,1]):
-    // 1) GGX half-vector sampling (non-visible NDF inversion):
-    //    phi = 2*pi*u2
-    //    cosTheta = sqrt((1 - u1) / (1 + (alpha^2 - 1) * u1))
-    //    sinTheta = sqrt(1 - cosTheta^2)
-    //    H_tan = (sinTheta*cos(phi), sinTheta*sin(phi), cosTheta)
-    //    H = T*H_tan.x + B*H_tan.y + N*H_tan.z
-    //    L = reflect(view_dir, H)  // keep view_dir convention (camera -> surface)
-    // 2) Cosine-weighted hemisphere (diffuse):
-    //    r = sqrt(u1), phi = 2*pi*u2
-    //    x = r*cos(phi), y = r*sin(phi), z = sqrt(1-u1)
-    //    L = T*x + B*y + N*z
-
-    // We'll use three components from blue-noise: (u1,u2) for sampling and u3 for
-    // choosing between specular/diffuse (mixture). The per-strategy sampling formulas
-    // themselves only need two uniforms.
-    float u1 = noise_unorm.x;
-    float u2 = noise_unorm.y;
-    float u_branch = noise_unorm.z;
-
-    // mixture probability: favor specular for metals and for low roughness
-    float p_spec = clamp(metalness + (1.0 - roughness) * (1.0 - metalness), 0.0, 1.0);
-
     // Build local frame
     vec3 N = normalize(view_normal);
-    vec3 T;
-    if (abs(N.z) < 0.999)
-        T = normalize(cross(vec3(0.0, 0.0, 1.0), N));
-    else
-        T = normalize(cross(vec3(1.0, 0.0, 0.0), N));
+    vec3 T = cross(abs(N.x) < 0.999 ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 0.0, 1.0), N);
     vec3 B = cross(N, T);
-
-    // Branch: specular or diffuse
-    if (u_branch < p_spec)
-    {
-        // Specular: GGX half-vector sampling (non-visible inversion)
-        float alpha = max(roughness * roughness, 1e-4);
-        float a2 = alpha * alpha;
-
-        float phi = 2.0 * 3.14159265359 * u2;
-        float cosTheta = sqrt((1.0 - u1) / (1.0 + (a2 - 1.0) * u1));
-        float sinTheta = sqrt(max(0.0, 1.0 - cosTheta * cosTheta));
-
-        vec3 H_tan = vec3(sinTheta * cos(phi), sinTheta * sin(phi), cosTheta);
-        vec3 H = normalize(T * H_tan.x + B * H_tan.y + N * H_tan.z);
-
-        // Reflect the incident/view direction (camera->surface) around H
-        vec3 out_dir = reflect(view_dir, H);
-
-        // Make sure we march away from the surface; if not, flip to normal reflection
-        if (dot(out_dir, N) <= 0.0)
-            out_dir = reflect(view_dir, N);
-
-        return normalize(out_dir);
-    }
-    else
-    {
-        // Diffuse: cosine-weighted hemisphere sampling
-        float r = sqrt(max(0.0, u1));
-        float phi = 2.0 * 3.14159265359 * u2;
-        float x = r * cos(phi);
-        float y = r * sin(phi);
-        float z = sqrt(max(0.0, 1.0 - u1));
-
-        vec3 out_dir = normalize(T * x + B * y + N * z);
-        // out_dir is in camera->surface convention already
-        return out_dir;
-    }
+    
+    float theta = noise_unorm.x * (3.1415926 * 2);
+    float r = sqrt(noise_unorm.y);
+    vec2 xy = vec2(r * cos(theta), r * sin(theta));
+    float z = sqrt(1 - dot(xy, xy));
+    return N * z + T * xy.x + B * xy.y;
 }
 
 vec2 uv_space_march_dir(vec3 march_dir, vec3 view_pos)
@@ -178,25 +116,20 @@ const float FLT_LOWEST = -FLT_HIGHEST;
 // Precondition: ray must intersect the rectangle, and d components are non-zero (dda step ensures this)
 vec2 rayRectIntersection(vec2 P, vec2 d, vec4 rect) {
     // rect = vec4(x_min, x_max, y_min, y_max)
-    float tx1 = (rect.x - P.x) / d.x;
-    float tx2 = (rect.y - P.x) / d.x;
-    float ty1 = (rect.z - P.y) / d.y;
-    float ty2 = (rect.w - P.y) / d.y;
+    const vec4 ts = (rect - P.xxyy) / d.xxyy;
 
-    float tx_enter = min(tx1, tx2);
-    float tx_exit = max(tx1, tx2);
-    float ty_enter = min(ty1, ty2);
-    float ty_exit = max(ty1, ty2);
+    vec2 t_enter = min(ts.xz, ts.yw);
+    vec2 t_exit = max(ts.xz, ts.yw);
 
-    tx_enter = isnan(tx_enter) || isinf(tx_enter) ? FLT_LOWEST : tx_enter;
-    ty_enter = isnan(ty_enter) || isinf(ty_enter) ? FLT_LOWEST : ty_enter;
-    tx_exit = isnan(tx_exit) || isinf(tx_exit) ? FLT_HIGHEST : tx_exit;
-    ty_exit = isnan(ty_exit) || isinf(ty_exit) ? FLT_HIGHEST : ty_exit;
+    t_enter.x = isnan(t_enter.x) || isinf(t_enter.x) ? FLT_LOWEST : t_enter.x;
+    t_enter.y = isnan(t_enter.y) || isinf(t_enter.y) ? FLT_LOWEST : t_enter.y;
+    t_exit.x = isnan(t_exit.x) || isinf(t_exit.x) ? FLT_HIGHEST : t_exit.x;
+    t_exit.y = isnan(t_exit.y) || isinf(t_exit.y) ? FLT_HIGHEST : t_exit.y;
 
-    float t_enter = max(tx_enter, ty_enter);
-    float t_exit = min(tx_exit, ty_exit);
+    float t_enter_d = max(t_enter.x, t_enter.y);
+    float t_exit_d = min(t_exit.x, t_exit.y);
 
-    return vec2(t_enter, t_exit);
+    return vec2(t_enter_d, t_exit_d);
 }
 
 vec4 get_hiz_pixelcoord_boundary(int hiz_level, ivec2 hiz_resolution, ivec2 hiz_coord)
@@ -211,7 +144,9 @@ vec4 get_hiz_pixelcoord_boundary(int hiz_level, ivec2 hiz_resolution, ivec2 hiz_
 }
 
 const int MAX_HIZ_LEVEL = 8;
-const int MAX_ITER = 64;
+const int MAX_ITER = 96;
+
+int iter;
 
 // retuning `a` component as hit/miss flag (1.0 = hit, 0.0 = miss)
 vec4 raytrace(vec3 view_pos, vec3 march_dir)
@@ -229,11 +164,12 @@ vec4 raytrace(vec3 view_pos, vec3 march_dir)
     traverse_screen_pixcoord += dda_step; // Advance one step to avoid self-intersection
 
     int hiz_level = 0;
+    int hit_penalty = 0;
 
     const ivec2 resolution_ivec = ivec2(resolution);
     const vec2 resolution_vec = vec2(resolution);
 
-    for (int iter = 0; iter < MAX_ITER; iter++)
+    for (iter = 0; iter < MAX_ITER; iter++)
     {
         /* Calculate Hi-Z Level Data */
 
@@ -244,10 +180,7 @@ vec4 raytrace(vec3 view_pos, vec3 march_dir)
         /* Fetch Hi-Z Depth */
 
         const ivec2 hiz_texel_coord = ivec2(floor(traverse_screen_pixcoord)) >> hiz_level;
-        const float hiz_depth = texelFetch(depth_tex,
-                clamp(hiz_texel_coord, ivec2(0), hiz_level_res - 1),
-                hiz_level
-            ).r;
+        const float hiz_depth = texelFetch(depth_tex, hiz_texel_coord, hiz_level).r;
 
         const vec4 hiz_depth_clip = fma(hiz_depth.xxxx, inv_proj_mat_col3, inv_proj_mat_col4);
         const float hiz_depth_view_z = -hiz_depth_clip.z / hiz_depth_clip.w;
@@ -269,8 +202,8 @@ vec4 raytrace(vec3 view_pos, vec3 march_dir)
         const vec3 traverse_screen_enter_view_pos = vec3(uv_to_ndc(traverse_screen_enter_uv) * near_plane_span, -near_plane);
         const vec3 traverse_screen_exit_view_pos = vec3(uv_to_ndc(traverse_screen_exit_uv) * near_plane_span, -near_plane);
 
-        const vec3 traverse_enter_view_pos = ray_intersection(Ray(vec3(0.0), traverse_screen_enter_view_pos), march_ray);
-        const vec3 traverse_exit_view_pos = ray_intersection(Ray(vec3(0.0), traverse_screen_exit_view_pos), march_ray);
+        const vec3 traverse_enter_view_pos = ray_intersection(traverse_screen_enter_view_pos, march_ray);
+        const vec3 traverse_exit_view_pos = ray_intersection(traverse_screen_exit_view_pos, march_ray);
 
         const float traverse_enter_view_z = -traverse_enter_view_pos.z;
         const float traverse_exit_view_z = -traverse_exit_view_pos.z;
@@ -298,8 +231,7 @@ vec4 raytrace(vec3 view_pos, vec3 march_dir)
             continue;
         }
 
-        // Step too far, view direction can't intersect
-        if ((traverse_enter_view_z - traverse_exit_view_z) * march_dir.z < 0.0)
+        if (any(lessThan(t_bounds, vec2(0.0))))
         {
             if (hiz_level == 0) return vec4(0.0);
             hiz_level = prev_level;
@@ -322,40 +254,58 @@ vec4 raytrace(vec3 view_pos, vec3 march_dir)
             }
 
             hiz_level = prev_level;
+            hit_penalty = 4;
             continue;
         }
 
         if (next_pixcoord_out_of_bounds) return vec4(0.0);
 
         traverse_screen_pixcoord = next_pixcoord;
-        hiz_level = next_level;
+        if (hit_penalty > 0)
+            hit_penalty --;
+        else
+            hiz_level = next_level;
     }
 
     return vec4(0.0);
 }
 
+shared bool early_exit;
+
 void main()
 {
-    if (any(greaterThanEqual(gl_GlobalInvocationID.xy, resolution)))
-        return;
-
     const ivec2 resolution_ivec = ivec2(resolution);
     const ivec2 pixel_coord = ivec2(gl_GlobalInvocationID.xy);
+    
+    if(gl_LocalInvocationIndex == 0)
+    {
+        const ivec2 pixel_coord_mip3 = pixel_coord >> 3;
+        early_exit = texelFetch(depth_tex, pixel_coord_mip3, 3).r == 0.0;
+    }
+
+    barrier();
+
+    if(early_exit || any(greaterThanEqual(gl_GlobalInvocationID.xy, resolution)))
+    {
+        imageStore(ssgi_trace_out, pixel_coord, vec4(0.0));
+        return;
+    }
 
     /* Texture Fetch */
+
+    const float depth = texelFetch(depth_tex, pixel_coord, 0).r;
+
+    if (depth == 0.0)
+    {
+        imageStore(ssgi_trace_out, pixel_coord, vec4(0.0));
+        return;
+    }
 
     const vec4 noise_unorm = texture(
             blue_noise_tex,
             vec2(pixel_coord + time_noise) / 128
         );
     const uvec2 light_info = texelFetch(light_info_tex, pixel_coord, 0).rg;
-    const float depth = texelFetch(depth_tex, pixel_coord, 0).r;
-
-    if (depth == 0.0)
-    {
-        imageStore(ssgi_trace_out, pixel_coord, vec4(0.0, 0.0, 0.0, 1.0));
-        return;
-    }
 
     /* Reconstruct Data */
 
@@ -380,5 +330,4 @@ void main()
     const vec3 albedo = texture(albedo_tex, (vec2(pixel_coord) + 0.5) / vec2(resolution_ivec)).rgb;
 
     imageStore(ssgi_trace_out, pixel_coord, vec4(trace_result.rgb * trace_result.a * albedo, trace_result.a));
-    return;
 }
