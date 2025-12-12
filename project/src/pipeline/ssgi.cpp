@@ -48,6 +48,7 @@ namespace pipeline
 		};
 
 		internal_param.max_scene_distance = param.max_scene_distance;
+		internal_param.attenuation_distance = param.distance_attenuation;
 
 		return internal_param;
 	}

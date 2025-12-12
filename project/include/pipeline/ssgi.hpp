@@ -23,6 +23,7 @@ namespace pipeline
 			glm::mat4 proj_mat;        // Camera projection matrix
 			glm::mat4 view_mat;        // Camera view matrix
 			float max_scene_distance;  // farthest viewable distance in the scene
+			float distance_attenuation;  // attenuation factor for distance
 		};
 
 		static std::expected<SSGI, util::Error> create(SDL_GPUDevice* device) noexcept;
@@ -53,6 +54,7 @@ namespace pipeline
 			glm::vec2 near_plane_span;
 			float near_plane;
 			float max_scene_distance;  // farthest viewable distance in the scene
+			float attenuation_distance;  // attenuation factor for distance
 
 			static Internal_param from_param(const Param& param, const glm::uvec2& resolution) noexcept;
 		};

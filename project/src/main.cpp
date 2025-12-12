@@ -427,7 +427,8 @@ static void main_logic(const backend::SDL_context& sdl_context, const std::strin
 			pipeline::SSGI::Param{
 				.proj_mat = logic_result.camera.proj_matrix,
 				.view_mat = logic_result.camera.view_matrix,
-				.max_scene_distance = gbuffer_drawdata.get_max_distance()
+				.max_scene_distance = gbuffer_drawdata.get_max_distance(),
+				.distance_attenuation = 0.0
 			},
 			swapchain_size
 		) | util::unwrap("SSGI pass failed");
