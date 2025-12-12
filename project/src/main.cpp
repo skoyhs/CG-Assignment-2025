@@ -39,6 +39,7 @@
 #include "target/gbuffer.hpp"
 #include "target/light.hpp"
 #include "target/shadow.hpp"
+#include "target/ssgi.hpp"
 #include "tiny_gltf.h"
 #include "util/unwrap.hpp"
 
@@ -53,6 +54,7 @@ struct Render_resource
 	target::AO ao_target;
 	target::Auto_exposure auto_exposure_target;
 	target::Bloom bloom_target;
+	target::SSGI ssgi_target;
 
 	renderer::Gbuffer_gltf gbuffer_renderer;
 	renderer::Shadow_gltf shadow_renderer;
@@ -147,6 +149,7 @@ static std::expected<Render_resource, util::Error> create_render_resource(
 		.ao_target = {},
 		.auto_exposure_target = std::move(*auto_exposure_target),
 		.bloom_target = {},
+		.ssgi_target = {},
 
 		.gbuffer_renderer = std::move(*gbuffer_renderer),
 		.shadow_renderer = std::move(*shadow_renderer),
@@ -317,6 +320,7 @@ static void main_logic(const backend::SDL_context& sdl_context, const std::strin
 		render_resource.ao_target.cycle(gpu_device, swapchain_size) | util::unwrap();
 		render_resource.auto_exposure_target.cycle();
 		render_resource.bloom_target.resize(gpu_device, swapchain_size) | util::unwrap();
+		render_resource.ssgi_target.resize(gpu_device, swapchain_size) | util::unwrap();
 
 		backend::imgui_upload_data(command_buffer);
 
@@ -419,6 +423,7 @@ static void main_logic(const backend::SDL_context& sdl_context, const std::strin
 			command_buffer,
 			render_resource.light_buffer_target,
 			render_resource.gbuffer_target,
+			render_resource.ssgi_target,
 			pipeline::SSGI::Param{
 				.proj_mat = logic_result.camera.proj_matrix,
 				.view_mat = logic_result.camera.view_matrix,
@@ -460,6 +465,7 @@ static void main_logic(const backend::SDL_context& sdl_context, const std::strin
 				render_resource.light_buffer_target,
 				render_resource.auto_exposure_target,
 				render_resource.bloom_target,
+				render_resource.ssgi_target,
 				*render_resource.composite_target.composite_texture,
 				{.bloom_strength = logic_result.bloom_strength}
 			) | util::unwrap();
@@ -498,7 +504,7 @@ static void main_logic(const backend::SDL_context& sdl_context, const std::strin
 				render_resource.debug_pipeline.render_channels(
 					command_buffer,
 					swapchain_pass,
-					*render_resource.light_buffer_target.ssgi_trace_texture,
+					*render_resource.ssgi_target.primary_trace_texture,
 					swapchain_size,
 					4
 				);

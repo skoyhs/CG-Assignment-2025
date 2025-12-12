@@ -3,6 +3,7 @@
 #include "gpu/graphics-pipeline.hpp"
 
 #include "gpu/sampler.hpp"
+#include "target/ssgi.hpp"
 #include "util/as-byte.hpp"
 #include <SDL3/SDL_gpu.h>
 
@@ -68,6 +69,7 @@ namespace pipeline
 		const target::Light_buffer& light_buffer,
 		const target::Auto_exposure& auto_exposure,
 		const target::Bloom& bloom,
+		const target::SSGI& ssgi,
 		SDL_GPUTexture* target_texture,
 		const Param& param
 	) const noexcept
@@ -75,7 +77,7 @@ namespace pipeline
 		const auto sampler_texture_arr = std::array{
 			light_buffer.light_texture.current().bind_with_sampler(nearest_sampler),
 			bloom.get_upsample_chain(0).bind_with_sampler(linear_sampler),
-			light_buffer.ssgi_trace_texture->bind_with_sampler(linear_sampler)
+			ssgi.primary_trace_texture->bind_with_sampler(linear_sampler)
 		};
 
 		const auto auto_exposure_result_buffer = auto_exposure.get_current_frame().result_buffer;

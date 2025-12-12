@@ -25,21 +25,10 @@ namespace target
 			.usage = {.sampler = true, .color_target = true, .compute_storage_read = true}
 		};
 
-		static constexpr gpu::Texture::Format ssgi_buffer_format = {
-			.type = SDL_GPU_TEXTURETYPE_2D,
-			.format = SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT,
-			.usage = {.sampler = true, .compute_storage_write = true}
-		};
-
 		graphics::Cycle_texture light_texture{
 			light_buffer_format,
 			"Physical Light Texture"
 		};  // Light Buffer Texture
-
-		graphics::Auto_texture ssgi_trace_texture{
-			ssgi_buffer_format,
-			"SSGI Trace Texture"
-		};  // SSGI Trace Texture, TEMPORARY
 
 		// Resize the render target
 		std::expected<void, util::Error> cycle(SDL_GPUDevice* device, glm::u32vec2 size) noexcept;

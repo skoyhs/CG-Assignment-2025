@@ -130,6 +130,7 @@ namespace pipeline
 		const gpu::Command_buffer& command_buffer,
 		const target::Light_buffer& light_buffer,
 		const target::Gbuffer& gbuffer,
+		const target::SSGI& ssgi_target,
 		const Param& param,
 		glm::u32vec2 resolution
 	) noexcept
@@ -138,7 +139,7 @@ namespace pipeline
 		command_buffer.push_uniform_to_compute(0, util::as_bytes(internal_param));
 
 		const SDL_GPUStorageTextureReadWriteBinding write_binding{
-			.texture = *light_buffer.ssgi_trace_texture,
+			.texture = *ssgi_target.primary_trace_texture,
 			.mip_level = 0,
 			.layer = 0,
 			.cycle = true,

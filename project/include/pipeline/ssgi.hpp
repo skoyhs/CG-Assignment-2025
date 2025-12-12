@@ -6,6 +6,7 @@
 #include "gpu/texture.hpp"
 #include "target/gbuffer.hpp"
 #include "target/light.hpp"
+#include "target/ssgi.hpp"
 #include "util/error.hpp"
 
 #include <expected>
@@ -30,6 +31,7 @@ namespace pipeline
 			const gpu::Command_buffer& command_buffer,
 			const target::Light_buffer& light_buffer,
 			const target::Gbuffer& gbuffer,
+			const target::SSGI& ssgi_target,
 			const Param& param,
 			glm::u32vec2 resolution
 		) noexcept;
