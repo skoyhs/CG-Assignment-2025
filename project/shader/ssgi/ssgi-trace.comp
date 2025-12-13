@@ -1,5 +1,3 @@
-// HALF RES
-
 #version 460
 
 #extension GL_GOOGLE_include_directive : enable
@@ -40,24 +38,48 @@ layout(std140, set = 2, binding = 0) uniform Params
 
 //============================================================
 
-struct Ray
+const float PI = 3.1415926;
+const float FLT_HIGHEST = 1e+38;
+const float FLT_LOWEST = -FLT_HIGHEST;
+const int MAX_HIZ_LEVEL = 8;
+const int MAX_ITER = 96;
+const int MAX_SKIP_STEPS = 8;
+
+//============================================================
+
+struct Hit_result
 {
-    vec3 origin;
-    vec3 direction;
+    bool hit;
+    vec2 uv;
+    vec3 V_hit_pos;
 };
 
-vec3 ray_intersection(vec3 ray1_dir, Ray ray2)
+Hit_result no_hit()
+{
+    return Hit_result(false, vec2(0.0), vec3(0.0));
+}
+
+Hit_result make_hit(vec2 uv, vec3 V_hit_pos)
+{
+    return Hit_result(true, uv, V_hit_pos);
+}
+
+//============================================================
+
+// Calculate the intersection point of ray1 (origin at (0,0,0)) and ray2 (origin at ray2_origin)
+vec3 ray_intersection(vec3 ray1_dir, vec3 ray2_origin, vec3 ray2_dir)
 {
     const float a = dot(ray1_dir, ray1_dir);
-    const float b = dot(ray1_dir, ray2.direction);
-    const float c = dot(ray2.direction, ray2.direction);
-    const float d = dot(ray1_dir, ray2.origin);
-    const float e = dot(ray2.direction, ray2.origin);
+    const float b = dot(ray1_dir, ray2_dir);
+    const float c = dot(ray2_dir, ray2_dir);
+    const float d = dot(ray1_dir, ray2_origin);
+    const float e = dot(ray2_dir, ray2_origin);
 
     const float t1 = (-c * d + b * e) / (b * b - a * c);
     return ray1_dir * t1;
 }
 
+// Normalize a PUV space direction to a unit step in PUV space
 vec2 dda_step_direction(vec2 dir)
 {
     const vec2 abs_dir = abs(dir.xy);
@@ -65,66 +87,64 @@ vec2 dda_step_direction(vec2 dir)
     ? vec2(sign(dir.x), dir.y / abs_dir.x) : vec2(dir.x / abs_dir.y, sign(dir.y));
 }
 
-vec3 reconstruct_view_pos_reverse_z(vec2 pixel_coord, float depth)
+// Reconstruct view space position from pixel UV coordinate and depth
+vec3 P_to_V_pos(vec2 PUV_coord, float depth)
 {
-    const vec2 uv = pixel_coord / vec2(resolution);
+    const vec2 uv = PUV_coord / vec2(resolution);
     const vec4 ndc_pos = vec4(uv_to_ndc(uv), depth, 1.0);
-    const vec4 view_pos_homo = inv_proj_mat * ndc_pos;
-    return view_pos_homo.xyz / view_pos_homo.w;
+    const vec4 V_pos_h = inv_proj_mat * ndc_pos;
+    return V_pos_h.xyz / V_pos_h.w;
 }
 
-vec3 reconstruct_view_normal(vec3 world_normal)
+// Transform a world space vector to view space
+vec3 W_to_V_vec(vec3 W_vec)
 {
-    const vec4 world_normal_h = vec4(world_normal, 0.0);
-    const vec4 view_normal_h = view_mat * world_normal_h;
-    return normalize(view_normal_h.xyz);
+    const vec4 W_vec_h = vec4(W_vec, 0.0);
+    const vec4 V_vec_h = view_mat * W_vec_h;
+    return normalize(V_vec_h.xyz);
 }
 
-const float PI = 3.1415926;
-
-vec3 select_march_direction(vec3 view_normal,
+// Select a march direction based on normal, view direction and noise
+vec3 select_march_direction(vec3 normal,
                             vec3 view_dir,
-                            vec4 noise_unorm,
-                            float metalness,
-                            float roughness)
+                            vec4 noise_unorm)
 {
-    vec3 N = view_normal;
+    vec3 N = normal;
     vec3 T = cross(vec3(1.0, 0.0, 0.0), N);
     vec3 B = cross(N, T);
     mat3 TBN = mat3(T, B, N);
 
-    float theta = noise_unorm.x * 0.5 * PI;
+    float theta = acos(1 - noise_unorm.x);
     float phi = noise_unorm.y * 2.0 * PI;
     vec3 xyz = vec3(cos(theta) * sin(phi), cos(theta) * cos(phi), sin(theta));
 
     return TBN * xyz;
 }
 
-vec2 uv_space_march_dir(vec3 march_dir, vec3 view_pos)
+// Calculate PUV space march direction from V space march direction
+vec2 uv_space_march_dir(vec3 V_march_dir, vec3 V_start)
 {
-    vec4 clip0 = proj_mat * vec4(view_pos, 1.0);
+    vec4 clip0 = proj_mat * vec4(V_start, 1.0);
     clip0 /= clip0.w;
 
     const float base_step = 0.02;
     const float min_step = 0.1;
-    float step_len = max(length(view_pos) * base_step, min_step);
-    vec3 stepped = view_pos + march_dir * step_len;
+    float step_len = max(length(V_start) * base_step, min_step);
+    vec3 stepped = V_start + V_march_dir * step_len;
 
     vec4 clip1 = proj_mat * vec4(stepped, 1.0);
     clip1 /= clip1.w;
 
-    vec2 ndc_delta = clip1.xy - clip0.xy;
+    vec2 NDC_delta = clip1.xy - clip0.xy;
 
-    vec2 pixel_delta = ndc_delta * vec2(0.5 * float(resolution.x), -0.5 * float(resolution.y));
-    return pixel_delta;
+    vec2 PUV_delta = NDC_delta * vec2(0.5 * float(resolution.x), -0.5 * float(resolution.y));
+    return PUV_delta;
 }
 
-const float FLT_HIGHEST = 1e+38;
-const float FLT_LOWEST = -FLT_HIGHEST;
-
 // Precondition: ray must intersect the rectangle, and d components are non-zero (dda step ensures this)
-vec2 rayRectIntersection(vec2 P, vec2 d, vec4 rect) {
-    // rect = vec4(x_min, x_max, y_min, y_max)
+// rect = vec4(x_min, x_max, y_min, y_max)
+vec2 ray_rect_intersect(vec2 P, vec2 d, vec4 rect) 
+{
     const vec4 ts = (rect - P.xxyy) / d.xxyy;
 
     vec2 t_enter = min(ts.xz, ts.yw);
@@ -152,14 +172,14 @@ vec4 get_hiz_pixelcoord_boundary(int hiz_level, ivec2 hiz_resolution, ivec2 hiz_
     ).xzyw;
 }
 
-vec4 compute_hit_color(vec2 uv, vec3 view_space_ray_direction, float distance)
+vec4 compute_hit_color(vec2 uv, vec3 V_ray_direction, float distance)
 {
     const vec2 ndc = uv_to_ndc(uv);
     const float edge_mult = 1.0 - smoothstep(0.97, 1.0, max(abs(ndc.x), abs(ndc.y)));
 
-    const vec3 hit_normal_world = unpack_normal(textureLod(light_info_tex, uv, 0).r);
-    const vec3 hit_normal_view = reconstruct_view_normal(hit_normal_world);
-    const float NdotL = max(dot(hit_normal_view, normalize(-view_space_ray_direction)), 0.0);
+    const vec3 W_hit_normal = unpack_normal(textureLod(light_info_tex, uv, 0).r);
+    const vec3 V_hit_normal = W_to_V_vec(W_hit_normal);
+    const float NdotL = max(dot(V_hit_normal, normalize(-V_ray_direction)), 0.0);
     const float attenuation = exp(-distance * distance_attenuation);
 
     const vec4 hit_albedo = textureLod(luminance_tex, uv, 0).rgba; // a channel for direct lighting
@@ -167,26 +187,14 @@ vec4 compute_hit_color(vec2 uv, vec3 view_space_ray_direction, float distance)
     return vec4(hit_albedo.rgb * attenuation * NdotL * edge_mult, mix(0.5, 1.0, hit_albedo.a));
 }
 
-const int MAX_HIZ_LEVEL = 8;
-const int MAX_ITER = 96;
-const int MAX_SKIP_STEPS = 8;
-
-int iter;
-
-// retuning `a` component as hit/miss flag (1.0 = hit, 0.0 = miss)
-vec4 raytrace(vec3 view_pos, vec3 march_dir, ivec2 pixel_coord)
+Hit_result raytrace(vec3 V_start, vec3 V_march_dir, ivec2 PUV_coord)
 {
-    const Ray march_ray = Ray(
-            view_pos,
-            march_dir
-        );
+    const vec2 PUV_delta = uv_space_march_dir(V_march_dir, V_start);
+    const vec2 PUV_unit_step = dda_step_direction(PUV_delta);
 
-    const vec2 pixel_delta = uv_space_march_dir(march_dir, view_pos);
-    const vec2 dda_step = dda_step_direction(pixel_delta);
-
-    vec2 traverse_screen_pixcoord = vec2(pixel_coord) + 0.5;
-    const vec2 initial_screen_pixcoord = traverse_screen_pixcoord;
-    traverse_screen_pixcoord += dda_step; // Advance one step to avoid self-intersection
+    vec2 PUV_traverse = vec2(PUV_coord) + 0.5;
+    const vec2 PUV_initial = PUV_traverse;
+    PUV_traverse += PUV_unit_step; 
 
     int hiz_level = 0;
     int hit_penalty = 0;
@@ -195,7 +203,7 @@ vec4 raytrace(vec3 view_pos, vec3 march_dir, ivec2 pixel_coord)
     const ivec2 resolution_ivec = ivec2(resolution);
     const vec2 resolution_vec = vec2(resolution);
 
-    for (iter = 0; iter < MAX_ITER; iter++)
+    for (int iter = 0; iter < MAX_ITER; iter++)
     {
         /* Calculate Hi-Z Level Data */
 
@@ -205,74 +213,78 @@ vec4 raytrace(vec3 view_pos, vec3 march_dir, ivec2 pixel_coord)
 
         /* Fetch Hi-Z Depth */
 
-        const ivec2 hiz_texel_coord = ivec2(floor(traverse_screen_pixcoord)) >> hiz_level;
-        const float hiz_depth = texelFetch(depth_tex, hiz_texel_coord, hiz_level).r;
+        const ivec2 UV_hiz_texel_coord = ivec2(floor(PUV_traverse)) >> hiz_level;
+        const float P_hiz_depth = texelFetch(depth_tex, UV_hiz_texel_coord, hiz_level).r;
 
-        const vec4 hiz_depth_clip = fma(hiz_depth.xxxx, inv_proj_mat_col3, inv_proj_mat_col4);
-        const float hiz_depth_view_z = -hiz_depth_clip.z / hiz_depth_clip.w;
+        const vec4 V_hiz_depth = fma(P_hiz_depth.xxxx, inv_proj_mat_col3, inv_proj_mat_col4);
+        const float V_hiz_depth_z = -V_hiz_depth.z / V_hiz_depth.w;
 
         /* Compute Intersection with Hi-Z Pixel Boundary */
 
-        const vec4 hiz_boundary = get_hiz_pixelcoord_boundary(hiz_level, hiz_level_res, hiz_texel_coord);
-        const vec2 t_bounds = rayRectIntersection(initial_screen_pixcoord, dda_step, hiz_boundary);
+        const vec4 hiz_boundary = get_hiz_pixelcoord_boundary(hiz_level, hiz_level_res, UV_hiz_texel_coord);
+        const vec2 t_bounds = ray_rect_intersect(PUV_initial, PUV_unit_step, hiz_boundary);
 
         const float t_enter = t_bounds.x;
         const float t_exit = t_bounds.y;
 
-        const vec2 traverse_screen_enter_pixcoord = fma(dda_step, t_bounds.xx, initial_screen_pixcoord);
-        const vec2 traverse_screen_exit_pixcoord = fma(dda_step, t_bounds.yy, initial_screen_pixcoord);
+        const vec2 PUV_traverse_enter = fma(PUV_unit_step, t_bounds.xx, PUV_initial);
+        const vec2 PUV_traverse_exit = fma(PUV_unit_step, t_bounds.yy, PUV_initial);
 
-        const vec2 traverse_screen_enter_uv = traverse_screen_enter_pixcoord / resolution_vec;
-        const vec2 traverse_screen_exit_uv = traverse_screen_exit_pixcoord / resolution_vec;
+        const vec2 UV_traverse_enter = PUV_traverse_enter / resolution_vec;
+        const vec2 UV_traverse_exit = PUV_traverse_exit / resolution_vec;
 
-        const vec3 traverse_screen_enter_view_pos = vec3(uv_to_ndc(traverse_screen_enter_uv) * near_plane_span, -near_plane);
-        const vec3 traverse_screen_exit_view_pos = vec3(uv_to_ndc(traverse_screen_exit_uv) * near_plane_span, -near_plane);
+        const vec3 V_traverse_enter_nearplane = vec3(uv_to_ndc(UV_traverse_enter) * near_plane_span, -near_plane);
+        const vec3 V_traverse_exit_nearplane = vec3(uv_to_ndc(UV_traverse_exit) * near_plane_span, -near_plane);
 
-        const vec3 traverse_enter_view_pos = ray_intersection(traverse_screen_enter_view_pos, march_ray);
-        const vec3 traverse_exit_view_pos = ray_intersection(traverse_screen_exit_view_pos, march_ray);
+        const vec3 V_traverse_enter = ray_intersection(V_traverse_enter_nearplane, V_start, V_march_dir);
+        const vec3 V_traverse_exit = ray_intersection(V_traverse_exit_nearplane, V_start, V_march_dir);
 
-        const float traverse_enter_view_z = -traverse_enter_view_pos.z;
-        const float traverse_exit_view_z = -traverse_exit_view_pos.z;
+        const float V_traverse_enter_depth = -V_traverse_enter.z;
+        const float V_traverse_exit_depth = -V_traverse_exit.z;
 
-        const vec2 traverse_uv = traverse_screen_pixcoord / resolution_vec;
+        const vec2 UV_traverse = PUV_traverse / resolution_vec;
 
         /* Precompute conditions */
 
         const int next_level = min(hiz_level + 1, MAX_HIZ_LEVEL);
         const int prev_level = max(hiz_level - 1, 0);
-        const vec2 next_pixcoord = fma(t_bounds.yy + 0.05, dda_step, initial_screen_pixcoord);
+        const vec2 PUV_next_traverse = fma(t_bounds.yy + 0.05, PUV_unit_step, PUV_initial);
 
-        const bool next_pixcoord_out_of_bounds = any(greaterThanEqual(next_pixcoord, resolution_vec))
-                || any(lessThan(next_pixcoord, vec2(0.0)));
+        const bool next_pixcoord_out_of_bounds = any(greaterThanEqual(PUV_next_traverse, resolution_vec))
+                || any(lessThan(PUV_next_traverse, vec2(0.0)));
+
+        const bool hiz_empty = P_hiz_depth == 0.0;
+        const bool t_outofbounds = any(lessThan(t_bounds, vec2(0.0)));
+        const bool hit_detected = V_hiz_depth_z <= max(V_traverse_exit_depth, V_traverse_enter_depth);
 
         // Empty space, increase HIZ level
-        if (hiz_depth == 0.0)
+        if (hiz_empty)
         {
             if (next_pixcoord_out_of_bounds)
-                return vec4(0.0);
+                return no_hit();
 
             hiz_level = next_level;
-            traverse_screen_pixcoord = next_pixcoord;
+            PUV_traverse = PUV_next_traverse;
 
             continue;
         }
 
-        if (any(lessThan(t_bounds, vec2(0.0))))
+        if (t_outofbounds)
         {
-            if (hiz_level == 0) return vec4(0.0);
+            if (hiz_level == 0) return no_hit();
             hiz_level = prev_level;
+            hit_penalty = 2;
             continue;
         }
 
-        // Hit detected
-        if (hiz_depth_view_z <= max(traverse_exit_view_z, traverse_enter_view_z))
+        if (hit_detected)
         {
             if (hiz_level == 0)
             {
-                if (abs(traverse_enter_view_z - hiz_depth_view_z) / traverse_enter_view_z < 0.01)
-                    return compute_hit_color(traverse_uv, march_dir, distance(view_pos, traverse_enter_view_pos));
+                if (abs(V_traverse_enter_depth - V_hiz_depth_z) / V_traverse_enter_depth < 0.01)
+                    return make_hit(UV_traverse, V_traverse_enter);
                 else
-                    return vec4(0.0);
+                    return no_hit();
             }
 
             hiz_level = prev_level;
@@ -280,45 +292,46 @@ vec4 raytrace(vec3 view_pos, vec3 march_dir, ivec2 pixel_coord)
             continue;
         }
 
-        if (next_pixcoord_out_of_bounds) return vec4(0.0);
+        if (next_pixcoord_out_of_bounds) return no_hit();
 
-        traverse_screen_pixcoord = next_pixcoord;
+        PUV_traverse = PUV_next_traverse;
+
         if (hit_penalty > 0)
             hit_penalty --;
         else
             hiz_level = next_level;
     }
 
-    return vec4(0.0);
+    return no_hit();
 }
 
 void main()
 {
     const ivec2 resolution_ivec = ivec2(resolution);
-    const ivec2 pixel_coord = ivec2(gl_GlobalInvocationID.xy) * 2;
-    const ivec2 half_res_coord = ivec2(gl_GlobalInvocationID.xy);
+    const ivec2 PUV_coord = ivec2(gl_GlobalInvocationID.xy) * 2;
+    const ivec2 PUV_coord_half = ivec2(gl_GlobalInvocationID.xy);
     
-    if(any(greaterThanEqual(pixel_coord, resolution)))
+    if(any(greaterThanEqual(PUV_coord, resolution)))
     {
-        imageStore(ssgi_trace_out, half_res_coord, vec4(0.0));
+        imageStore(ssgi_trace_out, PUV_coord_half, vec4(0.0));
         return;
     }
 
     /* Texture Fetch */
 
-    const float depth = texelFetch(depth_tex, pixel_coord, 0).r;
+    const float depth = texelFetch(depth_tex, PUV_coord, 0).r;
 
     if (depth == 0.0)
     {
-        imageStore(ssgi_trace_out, half_res_coord, vec4(0.0));
+        imageStore(ssgi_trace_out, PUV_coord_half, vec4(0.0));
         return;
     }
 
     const vec4 noise_unorm = texture(
             blue_noise_tex,
-            vec2(half_res_coord + time_noise) / 128
+            vec2(PUV_coord_half + time_noise) / 128
         );
-    const uvec2 light_info = texelFetch(light_info_tex, pixel_coord, 0).rg;
+    const uvec2 light_info = texelFetch(light_info_tex, PUV_coord, 0).rg;
 
     /* Reconstruct Data */
 
@@ -326,25 +339,30 @@ void main()
 
     /* Direction Calculation */
 
-    const vec3 view_pos = reconstruct_view_pos_reverse_z(vec2(pixel_coord) + 0.5, depth); // Pixel position at view space
-    const vec3 view_normal = reconstruct_view_normal(lighting.normal); // Pixel Normal at view space
-    const vec3 view_dir = normalize(view_pos); // View direction from camera to pixel
+    const vec3 V_pos = P_to_V_pos(vec2(PUV_coord) + 0.5, depth); // Pixel position at view space
+    const vec3 V_normal = W_to_V_vec(lighting.normal); // Pixel Normal at view space
 
-    vec3 march_dir = select_march_direction(
-                view_normal,
-                view_dir,
-                noise_unorm,
-                lighting.metalness,
-                mix(0.04, 1.0, lighting.roughness)
+    vec3 V_march_dir = select_march_direction(
+                V_normal,
+                normalize(V_pos),
+                noise_unorm
             );
     
-    if(march_dir == vec3(0.0))
+    if(V_march_dir == vec3(0.0))
     {
-        imageStore(ssgi_trace_out, half_res_coord, vec4(0.0));
+        imageStore(ssgi_trace_out, PUV_coord_half, vec4(0.0));
         return;
     }
 
-    const vec4 trace_result = raytrace(view_pos, normalize(march_dir), pixel_coord);
+    const Hit_result trace_result = raytrace(V_pos, normalize(V_march_dir), PUV_coord);
 
-    imageStore(ssgi_trace_out, half_res_coord, vec4(trace_result.rgb, trace_result.a));
+    if(trace_result.hit)
+    {
+        const vec4 hit_color = compute_hit_color(trace_result.uv, V_march_dir, length(trace_result.V_hit_pos - V_pos));
+        imageStore(ssgi_trace_out, PUV_coord_half, hit_color);
+    }
+    else
+    {
+        imageStore(ssgi_trace_out, PUV_coord_half, vec4(0.0));
+    }
 }

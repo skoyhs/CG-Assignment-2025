@@ -22,35 +22,35 @@ namespace pipeline
 		static thread_local std::mt19937 generator{std::random_device{}()};
 		static thread_local std::uniform_int_distribution<int> distribution{-2048, 2048};
 
-		Internal_param internal_param{};
-
-		internal_param.proj_mat = param.proj_mat;
-		internal_param.inv_proj_mat = glm::inverse(param.proj_mat);
-		internal_param.view_mat = param.view_mat;
-
-		internal_param.resolution = resolution;
-		internal_param.time_noise = {distribution(generator), distribution(generator)};
-
-		internal_param.inv_proj_mat_col3 = internal_param.inv_proj_mat[2];
-		internal_param.inv_proj_mat_col4 = internal_param.inv_proj_mat[3];
+		const glm::mat4 inv_proj_mat = glm::inverse(param.proj_mat);
 
 		const glm::vec4 near_plane_center_clip = {0.0, 0.0, 1.0, 1.0};
 		const glm::vec4 near_plane_corner_clip = {1.0, 1.0, 1.0, 1.0};
-		glm::vec4 near_plane_center_view = internal_param.inv_proj_mat * near_plane_center_clip;
-		glm::vec4 near_plane_corner_view = internal_param.inv_proj_mat * near_plane_corner_clip;
+		glm::vec4 near_plane_center_view = inv_proj_mat * near_plane_center_clip;
+		glm::vec4 near_plane_corner_view = inv_proj_mat * near_plane_corner_clip;
 		near_plane_center_view /= near_plane_center_view.w;
 		near_plane_corner_view /= near_plane_corner_view.w;
 
-		internal_param.near_plane = -near_plane_center_view.z;
-		internal_param.near_plane_span = {
+		const glm::vec2 near_plane_span = {
 			near_plane_corner_view.x - near_plane_center_view.x,
 			near_plane_corner_view.y - near_plane_center_view.y
 		};
 
-		internal_param.max_scene_distance = param.max_scene_distance;
-		internal_param.attenuation_distance = param.distance_attenuation;
+		const glm::ivec2 time_noise = {distribution(generator), distribution(generator)};
 
-		return internal_param;
+		return Internal_param{
+			.inv_proj_mat = inv_proj_mat,
+			.proj_mat = param.proj_mat,
+			.view_mat = param.view_mat,
+			.inv_proj_mat_col3 = inv_proj_mat[2],
+			.inv_proj_mat_col4 = inv_proj_mat[3],
+			.resolution = resolution,
+			.time_noise = time_noise,
+			.near_plane_span = near_plane_span,
+			.near_plane = -near_plane_center_view.z,
+			.max_scene_distance = param.max_scene_distance,
+			.distance_attenuation = param.distance_attenuation
+		};
 	}
 
 	std::expected<SSGI, util::Error> SSGI::create(SDL_GPUDevice* device) noexcept

@@ -54,7 +54,7 @@ namespace pipeline
 			glm::vec2 near_plane_span;
 			float near_plane;
 			float max_scene_distance;  // farthest viewable distance in the scene
-			float attenuation_distance;  // attenuation factor for distance
+			float distance_attenuation;  // attenuation factor for distance
 
 			static Internal_param from_param(const Param& param, const glm::uvec2& resolution) noexcept;
 		};
