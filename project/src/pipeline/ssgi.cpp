@@ -1,6 +1,6 @@
 #include "pipeline/ssgi.hpp"
 #include "asset/graphic-asset.hpp"
-#include "asset/shader/ssgi-trace.comp.hpp"
+#include "asset/shader/init-temporal.comp.hpp"
 #include "gpu/compute-pass.hpp"
 #include "gpu/compute-pipeline.hpp"
 #include "graphics/util/quick-create.hpp"
@@ -119,7 +119,7 @@ namespace pipeline
 		/* Create Pipeline */
 
 		const gpu::Compute_pipeline::Create_info pipeline_create_info{
-			.shader_data = shader_asset::ssgi_trace_comp,
+			.shader_data = shader_asset::init_temporal_comp,
 			.num_samplers = 9,
 			.num_readwrite_storage_textures = 4,
 			.num_uniform_buffers = 1,
