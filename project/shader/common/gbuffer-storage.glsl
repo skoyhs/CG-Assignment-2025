@@ -1,3 +1,6 @@
+#ifndef _GBUFFER_STORAGE_GLSL_
+#define _GBUFFER_STORAGE_GLSL_
+
 precision highp float;
 
 #extension GL_GOOGLE_include_directive : enable
@@ -39,3 +42,5 @@ GBufferLighting unpack_gbuffer_lighting(uvec2 packed)
 
     return lighting;
 }
+
+#endif

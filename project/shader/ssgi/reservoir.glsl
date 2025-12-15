@@ -1,3 +1,9 @@
+#ifndef _RESERVOIR_GLSL_
+#define _RESERVOIR_GLSL_
+
+#extension GL_GOOGLE_include_directive : enable
+#include "../common/oct.glsl"
+
 precision highp float;
 
 struct Reservoir
@@ -114,3 +120,5 @@ void clamp_reservoir(inout Reservoir reservoir, float M_max)
         // reservoir.W remains valid because scaling preserves W = w/(M*p_hat)
     }
 }
+
+#endif
