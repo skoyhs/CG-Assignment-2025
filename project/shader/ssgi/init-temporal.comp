@@ -221,7 +221,7 @@ void main()
 
     if (trace_result.hit)
     {
-        const float p = 1.0;
+        const float p = 1.0 / (2.0 * PI);
 
         const vec3 W_hit_pos = (inv_view_mat * vec4(trace_result.V_hit_pos, 1.0)).xyz;
         const vec3 W_hit_normal = octToNormal(unpackSnorm2x16(textureLod(light_info_tex, trace_result.uv, 0.0).r));
