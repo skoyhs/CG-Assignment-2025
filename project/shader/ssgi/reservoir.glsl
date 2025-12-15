@@ -32,9 +32,9 @@ Reservoir empty_reservoir()
 {
     return Reservoir(
         Sample(
-            vec3(0.0), vec3(0.0), vec3(0.0), 
+            vec3(0.0), vec3(0.0), vec3(0.0),
             vec3(0.0), vec3(0.0)
-        ), 
+        ),
         0.0, 0.0, 0.0
     );
 }
@@ -89,7 +89,7 @@ void encode_reservoir(Reservoir reservoir, out vec4 tex1, out uvec4 tex2, out uv
 
 float p_hat_at(Sample z, vec3 W_pos, vec3 W_normal)
 {
-    return dot(z.hit_luminance.rgb, vec3(0.2126, 0.7152, 0.0722)) + 0.001;
+    return dot(z.hit_luminance.rgb, vec3(0.2126, 0.7152, 0.0722));
 }
 
 bool update_reservoir(
@@ -122,8 +122,8 @@ void clamp_reservoir(inout Reservoir reservoir, float M_max)
 }
 
 float jacobian_determinant(
-    vec3 W_hit_normal, 
-    vec3 W_hit_pos, 
+    vec3 W_hit_normal,
+    vec3 W_hit_pos,
     vec3 W_prev_start_pos,
     vec3 W_start_pos
 )
@@ -141,12 +141,32 @@ float jacobian_determinant(
 
 void merge_reservoir(inout Reservoir target, Reservoir source, float p_hat, float noise)
 {
-    float M0 = target.M;
-    const bool updated = update_reservoir(target, source.z, p_hat * source.W * source.M, noise);
-    target.M = M0 + source.M;
+    // Aggregate source contribution as if source.M independent samples
+    float w_new = p_hat * source.W * source.M; // aggregated importance from source
 
-    if(updated)
-        target.W = target.w / (target.M * p_hat_at(target.z, target.z.start_position, target.z.start_normal));
+    float w_before = target.w;
+    float w_after = w_before + w_new;
+
+    // Selection probability for replacing the target sample with the source's sample
+    float selection_prob = (w_after > 0.0) ? (w_new / w_after) : 0.0;
+    bool updated = (w_after == 0.0) || (noise < selection_prob);
+
+    if (updated)
+    {
+        target.z = source.z;
+    }
+
+    target.w = w_after;
+    target.M = target.M + source.M;
+
+    if (updated)
+    {
+        float denom = target.M * p_hat_at(target.z, target.z.start_position, target.z.start_normal);
+        if (denom > 0.0)
+            target.W = target.w / denom;
+        else
+            target.W = 0.0;
+    }
 }
 
 #endif

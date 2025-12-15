@@ -223,4 +223,47 @@ Hit_result raytrace(
     return no_hit();
 }
 
+// Coarse screen-space visibility test between V_start and V_target (both in view space).
+// Samples a small number of points along the segment and compares scene depth to detect occlusion.
+// Returns true if the segment is largely free (no closer geometry detected), false if occluded.
+bool coarse_screen_trace_visibility(
+    vec3 V_start,
+    vec3 V_target,
+    ivec2 PUV_coord,
+    ivec2 resolution_ivec,
+    mat4 proj_mat,
+    vec4 inv_proj_mat_col3,
+    vec4 inv_proj_mat_col4,
+    vec2 near_plane_span,
+    float near_plane,
+    sampler2D depth_tex
+)
+{
+    Hit_result result = raytrace(
+        V_start,
+        normalize(V_target - V_start),
+        PUV_coord,
+        resolution_ivec,
+        proj_mat,
+        inv_proj_mat_col3,
+        inv_proj_mat_col4,
+        near_plane_span,
+        near_plane,
+        depth_tex
+    );
+
+    if (!result.hit)
+        return false;
+
+    const float total_distance = length(V_target - V_start);
+    const float error_margin = max(0.03, total_distance * 0.1);
+
+    if (length(result.V_hit_pos - V_target) < error_margin)
+    {
+        return true;
+    }
+
+    return false;
+}
+
 #endif

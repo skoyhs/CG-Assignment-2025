@@ -62,7 +62,26 @@ namespace pipeline
 			static Initial_sample_param from_param(const Param& param, const glm::uvec2& resolution) noexcept;
 		};
 
-		gpu::Compute_pipeline ssgi_pipeline;
+		struct Spatial_reuse_param
+		{
+			glm::mat4 inv_view_proj_mat;
+			glm::mat4 prev_view_proj_mat;
+			glm::mat4 proj_mat;
+			glm::mat4 view_mat;
+			glm::vec4 inv_proj_mat_col3;
+			glm::vec4 inv_proj_mat_col4;
+
+			glm::uvec2 comp_resolution;
+			glm::uvec2 full_resolution;
+			glm::vec2 near_plane_span;
+			float near_plane;
+			glm::ivec2 time_noise;
+
+			static Spatial_reuse_param from_param(const Param& param, const glm::uvec2& resolution) noexcept;
+		};
+
+		gpu::Compute_pipeline initial_pipeline;
+		gpu::Compute_pipeline spatial_reuse_pipeline;
 		gpu::Sampler noise_sampler, nearest_sampler, linear_sampler;
 		gpu::Texture noise_texture;
 
@@ -75,14 +94,24 @@ namespace pipeline
 			glm::u32vec2 resolution
 		) const noexcept;
 
+		std::expected<void, util::Error> run_spatial_reuse(
+			const gpu::Command_buffer& command_buffer,
+			const target::Gbuffer& gbuffer,
+			const target::SSGI& ssgi_target,
+			const Param& param,
+			glm::u32vec2 resolution
+		) const noexcept;
+
 		SSGI(
 			gpu::Compute_pipeline ssgi_pipeline,
+			gpu::Compute_pipeline spatial_reuse_pipeline,
 			gpu::Sampler noise_sampler,
 			gpu::Sampler nearest_sampler,
 			gpu::Sampler linear_sampler,
 			gpu::Texture noise_texture
 		) :
-			ssgi_pipeline(std::move(ssgi_pipeline)),
+			initial_pipeline(std::move(ssgi_pipeline)),
+			spatial_reuse_pipeline(std::move(spatial_reuse_pipeline)),
 			noise_sampler(std::move(noise_sampler)),
 			nearest_sampler(std::move(nearest_sampler)),
 			linear_sampler(std::move(linear_sampler)),

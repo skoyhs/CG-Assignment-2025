@@ -77,8 +77,8 @@ namespace pipeline
 		const auto sampler_texture_arr = std::array{
 			light_buffer.light_texture.current().bind_with_sampler(nearest_sampler),
 			bloom.get_upsample_chain(0).bind_with_sampler(linear_sampler),
-			ssgi.temporal_reservoir_texture4.current().bind_with_sampler(nearest_sampler),
-			ssgi.temporal_reservoir_texture1.current().bind_with_sampler(nearest_sampler)
+			ssgi.spatial_reservoir_texture4.current().bind_with_sampler(nearest_sampler),
+			ssgi.spatial_reservoir_texture1.current().bind_with_sampler(nearest_sampler)
 		};
 
 		const auto auto_exposure_result_buffer = auto_exposure.get_current_frame().result_buffer;

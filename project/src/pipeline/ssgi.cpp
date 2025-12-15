@@ -1,6 +1,7 @@
 #include "pipeline/ssgi.hpp"
 #include "asset/graphic-asset.hpp"
 #include "asset/shader/init-temporal.comp.hpp"
+#include "asset/shader/spatial-reuse.comp.hpp"
 #include "gpu/compute-pass.hpp"
 #include "gpu/compute-pipeline.hpp"
 #include "graphics/util/quick-create.hpp"
@@ -52,6 +53,45 @@ namespace pipeline
 			.near_plane = -near_plane_center_view.z,
 			.max_scene_distance = param.max_scene_distance,
 			.distance_attenuation = param.distance_attenuation
+		};
+	}
+
+	SSGI::Spatial_reuse_param SSGI::Spatial_reuse_param::from_param(
+		const Param& param,
+		const glm::uvec2& resolution
+	) noexcept
+	{
+		static thread_local std::mt19937 generator{std::random_device{}()};
+		static thread_local std::uniform_int_distribution<int> distribution{0, 128};
+
+		const glm::ivec2 time_noise = {distribution(generator), distribution(generator)};
+
+		const glm::mat4 inv_proj_mat = glm::inverse(param.proj_mat);
+
+		const glm::vec4 near_plane_center_clip = {0.0, 0.0, 1.0, 1.0};
+		const glm::vec4 near_plane_corner_clip = {1.0, 1.0, 1.0, 1.0};
+		glm::vec4 near_plane_center_view = inv_proj_mat * near_plane_center_clip;
+		glm::vec4 near_plane_corner_view = inv_proj_mat * near_plane_corner_clip;
+		near_plane_center_view /= near_plane_center_view.w;
+		near_plane_corner_view /= near_plane_corner_view.w;
+
+		const glm::vec2 near_plane_span = {
+			near_plane_corner_view.x - near_plane_center_view.x,
+			near_plane_corner_view.y - near_plane_center_view.y
+		};
+
+		return Spatial_reuse_param{
+			.inv_view_proj_mat = glm::inverse(param.proj_mat * param.view_mat),
+			.prev_view_proj_mat = param.prev_view_proj_mat,
+			.proj_mat = param.proj_mat,
+			.view_mat = param.view_mat,
+			.inv_proj_mat_col3 = inv_proj_mat[2],
+			.inv_proj_mat_col4 = inv_proj_mat[3],
+			.comp_resolution = (resolution + 1u) / 2u,
+			.full_resolution = resolution,
+			.near_plane_span = near_plane_span,
+			.near_plane = -near_plane_center_view.z,
+			.time_noise = time_noise
 		};
 	}
 
@@ -118,7 +158,7 @@ namespace pipeline
 
 		/* Create Pipeline */
 
-		const gpu::Compute_pipeline::Create_info pipeline_create_info{
+		const gpu::Compute_pipeline::Create_info initial_pipeline_create_info{
 			.shader_data = shader_asset::init_temporal_comp,
 			.num_samplers = 9,
 			.num_readwrite_storage_textures = 4,
@@ -128,12 +168,31 @@ namespace pipeline
 			.threadcount_z = 1
 		};
 
-		auto ssgi_pipeline =
-			gpu::Compute_pipeline::create(device, pipeline_create_info, "SSGI Trace Pipeline");
-		if (!ssgi_pipeline) return ssgi_pipeline.error().forward("Create SSGI pipeline failed");
+		const gpu::Compute_pipeline::Create_info spatial_reuse_pipeline_create_info{
+			.shader_data = shader_asset::spatial_reuse_comp,
+			.num_samplers = 13,
+			.num_readwrite_storage_textures = 4,
+			.num_uniform_buffers = 1,
+			.threadcount_x = 8,
+			.threadcount_y = 8,
+			.threadcount_z = 1
+		};
+
+		auto initial_pipeline =
+			gpu::Compute_pipeline::create(device, initial_pipeline_create_info, "SSGI Trace Pipeline");
+		if (!initial_pipeline) return initial_pipeline.error().forward("Create SSGI pipeline failed");
+
+		auto spatial_reuse_pipeline = gpu::Compute_pipeline::create(
+			device,
+			spatial_reuse_pipeline_create_info,
+			"SSGI Spatial Reuse Pipeline"
+		);
+		if (!spatial_reuse_pipeline)
+			return spatial_reuse_pipeline.error().forward("Create SSGI spatial reuse pipeline failed");
 
 		return SSGI(
-			std::move(*ssgi_pipeline),
+			std::move(*initial_pipeline),
+			std::move(*spatial_reuse_pipeline),
 			std::move(*noise_sampler),
 			std::move(*nearest_sampler),
 			std::move(*linear_sampler),
@@ -155,6 +214,11 @@ namespace pipeline
 			this->run_initial_sample(command_buffer, light_buffer, gbuffer, ssgi_target, param, resolution);
 		if (!initial_sample_result)
 			return initial_sample_result.error().forward("Run SSGI initial sample failed");
+
+		const auto spatial_reuse_result =
+			this->run_spatial_reuse(command_buffer, gbuffer, ssgi_target, param, resolution);
+		if (!spatial_reuse_result)
+			return spatial_reuse_result.error().forward("Run SSGI spatial reuse failed");
 
 		return {};
 	}
@@ -224,7 +288,7 @@ namespace pipeline
 			[this, &light_buffer, &gbuffer, &ssgi_target, dispatch_size](
 				const gpu::Compute_pass& compute_pass
 			) {
-				compute_pass.bind_pipeline(ssgi_pipeline);
+				compute_pass.bind_pipeline(initial_pipeline);
 				compute_pass.bind_samplers(
 					0,
 					light_buffer.light_texture.current().bind_with_sampler(nearest_sampler),
@@ -244,5 +308,91 @@ namespace pipeline
 		command_buffer.pop_debug_group();
 
 		return std::move(result).transform_error(util::Error::forward_fn("SSGI pass failed"));
+	}
+
+	std::expected<void, util::Error> SSGI::run_spatial_reuse(
+		const gpu::Command_buffer& command_buffer,
+		const target::Gbuffer& gbuffer,
+		const target::SSGI& ssgi_target,
+		const Param& param,
+		glm::u32vec2 resolution
+	) const noexcept
+	{
+		const Spatial_reuse_param spatial_reuse_param = Spatial_reuse_param::from_param(param, resolution);
+		command_buffer.push_uniform_to_compute(0, util::as_bytes(spatial_reuse_param));
+
+		const auto dispatch_size = (spatial_reuse_param.comp_resolution + 7u) / 8u;
+
+		const SDL_GPUStorageTextureReadWriteBinding write_binding_texture1{
+			.texture = ssgi_target.spatial_reservoir_texture1.current(),
+			.mip_level = 0,
+			.layer = 0,
+			.cycle = true,
+			.padding1 = 0,
+			.padding2 = 0,
+			.padding3 = 0
+		};
+
+		const SDL_GPUStorageTextureReadWriteBinding write_binding_texture2{
+			.texture = ssgi_target.spatial_reservoir_texture2.current(),
+			.mip_level = 0,
+			.layer = 0,
+			.cycle = true,
+			.padding1 = 0,
+			.padding2 = 0,
+			.padding3 = 0
+		};
+
+		const SDL_GPUStorageTextureReadWriteBinding write_binding_texture3{
+			.texture = ssgi_target.spatial_reservoir_texture3.current(),
+			.mip_level = 0,
+			.layer = 0,
+			.cycle = true,
+			.padding1 = 0,
+			.padding2 = 0,
+			.padding3 = 0
+		};
+
+		const SDL_GPUStorageTextureReadWriteBinding write_binding_texture4{
+			.texture = ssgi_target.spatial_reservoir_texture4.current(),
+			.mip_level = 0,
+			.layer = 0,
+			.cycle = true,
+			.padding1 = 0,
+			.padding2 = 0,
+			.padding3 = 0
+		};
+
+		const std::array write_bindings =
+			{write_binding_texture1, write_binding_texture2, write_binding_texture3, write_binding_texture4};
+
+		command_buffer.push_debug_group("SSGI Spatial Reuse Pass");
+		auto result = command_buffer.run_compute_pass(
+			write_bindings,
+			{},
+			[this, &gbuffer, &ssgi_target, dispatch_size](const gpu::Compute_pass& compute_pass) {
+				compute_pass.bind_pipeline(spatial_reuse_pipeline);
+				compute_pass.bind_samplers(
+					0,
+					ssgi_target.temporal_reservoir_texture1.current().bind_with_sampler(nearest_sampler),
+					ssgi_target.temporal_reservoir_texture2.current().bind_with_sampler(nearest_sampler),
+					ssgi_target.temporal_reservoir_texture3.current().bind_with_sampler(nearest_sampler),
+					ssgi_target.temporal_reservoir_texture4.current().bind_with_sampler(nearest_sampler),
+					ssgi_target.spatial_reservoir_texture1.prev().bind_with_sampler(nearest_sampler),
+					ssgi_target.spatial_reservoir_texture2.prev().bind_with_sampler(nearest_sampler),
+					ssgi_target.spatial_reservoir_texture3.prev().bind_with_sampler(nearest_sampler),
+					ssgi_target.spatial_reservoir_texture4.prev().bind_with_sampler(nearest_sampler),
+					gbuffer.depth_value_texture.current().bind_with_sampler(nearest_sampler),
+					gbuffer.depth_value_texture.prev().bind_with_sampler(linear_sampler),
+					gbuffer.lighting_info_texture->bind_with_sampler(nearest_sampler),
+					noise_texture.bind_with_sampler(noise_sampler),
+					ssgi_target.temporal_reservoir_texture3.prev().bind_with_sampler(nearest_sampler)
+				);
+				compute_pass.dispatch(dispatch_size.x, dispatch_size.y, 1);
+			}
+		);
+		command_buffer.pop_debug_group();
+
+		return std::move(result).transform_error(util::Error::forward_fn("SSGI spatial reuse pass failed"));
 	}
 }

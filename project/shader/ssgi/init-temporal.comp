@@ -249,7 +249,7 @@ void main()
         );
     }
 
-    const float p_hat = p_hat_at(hit_sample, W_start_pos, W_start_normal);
+    const float p_hat = p_hat_at(hit_sample, W_start_pos, W_start_normal) + 1e-2;
     const float w_new = p_hat / p;
 
     const bool updated = update_reservoir(
@@ -262,7 +262,7 @@ void main()
     if (updated)
         reservoir.W = reservoir.w / (reservoir.M * p_hat);
 
-    clamp_reservoir(reservoir, 40);
+    clamp_reservoir(reservoir, 50);
 
     vec4 tex1_out;
     uvec4 tex2_out;

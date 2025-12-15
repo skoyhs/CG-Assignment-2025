@@ -13,7 +13,7 @@ namespace target
 	///   - R: w
 	///   - G: M
 	///   - B: W
-	///   - A: (unused)
+	///   - A: p^(z)
 	/// - Texture 2: R32G32B32A32_UINT
 	///   - RGB: Ray hit position (x, y, z)
 	///   - A: Ray hit normal (octahedral encoded)
@@ -68,6 +68,26 @@ namespace target
 		graphics::Cycle_texture temporal_reservoir_texture4{
 			reservoir_texture4_format,
 			"SSGI Temporal Reservoir Texture 4"
+		};
+
+		graphics::Cycle_texture spatial_reservoir_texture1{
+			reservoir_texture1_format,
+			"SSGI Spatial Reservoir Texture 1"
+		};
+
+		graphics::Cycle_texture spatial_reservoir_texture2{
+			reservoir_texture2_format,
+			"SSGI Spatial Reservoir Texture 2"
+		};
+
+		graphics::Cycle_texture spatial_reservoir_texture3{
+			reservoir_texture3_format,
+			"SSGI Spatial Reservoir Texture 3"
+		};
+
+		graphics::Cycle_texture spatial_reservoir_texture4{
+			reservoir_texture4_format,
+			"SSGI Spatial Reservoir Texture 4"
 		};
 
 		///
