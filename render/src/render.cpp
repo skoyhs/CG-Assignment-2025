@@ -164,7 +164,7 @@ namespace render
 			.screen_size = swapchain_size,
 			.eye_position = params.camera.eye_position,
 			.sun_direction = params.primary_light.direction,
-			.sun_intensity = params.primary_light.intensity,
+			.sun_intensity = params.primary_light.intensity * params.sky.brightness_mult,
 			.turbidity = params.sky.turbidity
 		};
 
