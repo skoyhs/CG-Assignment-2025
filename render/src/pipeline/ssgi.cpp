@@ -325,14 +325,14 @@ namespace render::pipeline
 		if (!radiance_composite_result)
 			return radiance_composite_result.error().forward("Run SSGI radiance composite failed");
 
-		const auto radiance_add_result =
-			this->render_radiance_add(command_buffer, light_buffer, ssgi_target, resolution);
-		if (!radiance_add_result) return radiance_add_result.error().forward("Run SSGI radiance add failed");
-
 		const auto radiance_upsample_result =
 			this->run_radiance_upsample(command_buffer, gbuffer, ssgi_target, param, resolution);
 		if (!radiance_upsample_result)
 			return radiance_upsample_result.error().forward("Run SSGI radiance upsample failed");
+
+		const auto radiance_add_result =
+			this->render_radiance_add(command_buffer, light_buffer, ssgi_target, resolution);
+		if (!radiance_add_result) return radiance_add_result.error().forward("Run SSGI radiance add failed");
 
 		command_buffer.pop_debug_group();
 
