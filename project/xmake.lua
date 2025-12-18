@@ -2,36 +2,8 @@ target("main")
     set_kind("binary")
     set_languages("c++23") -- C++23标准
 
-    -- 第三方库依赖
-    add_packages("libsdl3", "glm", "imgui", "rygs-dxtc")
-
-    -- 自定义规则
-    add_rules("asset.shader", {debug = is_mode("debug"), includedir = "shader/common"})
-    add_rules("asset.pack")
-
-    -- 添加代码
     add_files("src/**.cpp")
-    add_includedirs("include")
+    add_includedirs("include", {public=true})
     add_headerfiles("include/(**.hpp)")
 
-    -- 添加着色器
-    add_files("shader/**.frag", "shader/**.vert", "shader/**.comp")
-
-    -- 添加资源包描述
-    add_files("asset/*.pack-desc")
-
-    -- 子功能库
-    add_deps(
-        "lib::gpu", 
-        "lib::gltf", 
-        "lib::zip", 
-        "lib::util", 
-        "lib::backend", 
-        "lib::image.io",
-        "lib::image.compress",
-        "lib::image.algo",
-        "lib::graphics.aa",
-        "lib::graphics.camera",
-        "lib::graphics.geometry",
-        "lib::graphics.util"
-    )
+    add_deps("render")

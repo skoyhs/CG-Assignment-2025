@@ -11,4 +11,14 @@ namespace logic
 		ImGui::SliderFloat("AO 半径", &ao_radius, 20.0f, 100.0f);
 		ImGui::SliderFloat("AO 时域混合", &ao_blend_ratio, 0.01f, 0.1f, "%.3f", ImGuiSliderFlags_Logarithmic);
 	}
+
+	render::Ambient_params Ambient_light::get_params() const noexcept
+	{
+		return render::Ambient_params{
+			.intensity = glm::vec3(ambient_intensity),
+			.ao_radius = ao_radius,
+			.ao_blend_ratio = ao_blend_ratio,
+			.ao_strength = ao_strength,
+		};
+	}
 }

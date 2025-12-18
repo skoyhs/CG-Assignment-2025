@@ -72,7 +72,7 @@ namespace graphics
 		const gpu::Command_buffer& command_buffer,
 		SDL_GPUTexture* src,
 		SDL_GPUTexture* dst
-	) noexcept
+	) const noexcept
 	{
 		command_buffer.push_debug_group("Copy texture via Renderpass_copy");
 		const SDL_GPUTextureSamplerBinding sampler_binding{.texture = src, .sampler = sampler};

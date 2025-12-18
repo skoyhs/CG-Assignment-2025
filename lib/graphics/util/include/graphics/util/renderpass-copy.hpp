@@ -37,7 +37,7 @@ namespace graphics
 			const gpu::Command_buffer& command_buffer,
 			SDL_GPUTexture* src,
 			SDL_GPUTexture* dst
-		) noexcept;
+		) const noexcept;
 
 	  private:
 

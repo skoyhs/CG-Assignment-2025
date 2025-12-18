@@ -2,6 +2,7 @@
 
 #include "graphics/camera/projection/perspective.hpp"
 #include "graphics/camera/view/orbit.hpp"
+#include "render/param.hpp"
 
 #include <glm/glm.hpp>
 
@@ -10,14 +11,6 @@ namespace logic
 	class Camera
 	{
 	  public:
-
-		struct Matrices
-		{
-			glm::mat4 view_matrix;
-			glm::mat4 proj_matrix;
-			glm::mat4 prev_camera_matrix;
-			glm::vec3 eye_position;
-		};
 
 		///
 		/// @brief Update camera control based on user input.
@@ -30,7 +23,7 @@ namespace logic
 		///
 		/// @return Camera matrices
 		///
-		Matrices get_matrices() noexcept;
+		render::Camera_matrices get_matrices() noexcept;
 
 	  private:
 

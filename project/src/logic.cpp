@@ -1,4 +1,5 @@
 #include "logic.hpp"
+#include "render/param.hpp"
 
 #include <imgui.h>
 #include <ranges>
@@ -30,14 +31,14 @@ void Logic::light_control_ui() noexcept
 
 void Logic::antialias_control_ui() noexcept
 {
-	using Mode = renderer::Antialias::Mode;
+	using namespace render;
 
 	ImGui::SeparatorText("抗锯齿");
 
-	if (ImGui::RadioButton("无抗锯齿", aa_mode == Mode::None)) aa_mode = Mode::None;
-	if (ImGui::RadioButton("FXAA", aa_mode == Mode::FXAA)) aa_mode = Mode::FXAA;
-	if (ImGui::RadioButton("MLAA", aa_mode == Mode::MLAA)) aa_mode = Mode::MLAA;
-	if (ImGui::RadioButton("SMAA", aa_mode == Mode::SMAA)) aa_mode = Mode::SMAA;
+	if (ImGui::RadioButton("无抗锯齿", aa_mode == Antialias_mode::None)) aa_mode = Antialias_mode::None;
+	if (ImGui::RadioButton("FXAA", aa_mode == Antialias_mode::FXAA)) aa_mode = Antialias_mode::FXAA;
+	if (ImGui::RadioButton("MLAA", aa_mode == Antialias_mode::MLAA)) aa_mode = Antialias_mode::MLAA;
+	if (ImGui::RadioButton("SMAA", aa_mode == Antialias_mode::SMAA)) aa_mode = Antialias_mode::SMAA;
 }
 
 void Logic::statistic_display_ui() const noexcept
@@ -54,11 +55,6 @@ void Logic::debug_control_ui() noexcept
 {
 	ImGui::SeparatorText("调试");
 
-	if (ImGui::RadioButton("无调试", debug_mode == Debug_mode::No_debug)) debug_mode = Debug_mode::No_debug;
-	if (ImGui::RadioButton("显示 AO", debug_mode == Debug_mode::Show_AO)) debug_mode = Debug_mode::Show_AO;
-	if (ImGui::RadioButton("显示 SSGI 追踪", debug_mode == Debug_mode::Show_SSGI_trace))
-		debug_mode = Debug_mode::Show_SSGI_trace;
-
 	ImGui::DragFloat("时间", &time, 0.01f, 0.0f, 1000.0f);
 
 	if (ImGui::Button("播放/暂停")) time_run = !time_run;
@@ -67,7 +63,7 @@ void Logic::debug_control_ui() noexcept
 	if (time_run) time += ImGui::GetIO().DeltaTime;
 }
 
-Logic::Result Logic::logic(const gltf::Model& model) noexcept
+std::tuple<render::Params, std::vector<gltf::Drawdata>> Logic::logic(const gltf::Model& model) noexcept
 {
 	camera_control.update();
 
@@ -90,18 +86,37 @@ Logic::Result Logic::logic(const gltf::Model& model) noexcept
 	for (const auto idx : std::views::iota(0zu, model.get_animations().size()))
 		animation_keys.push_back(gltf::Animation_key{.animation = uint32_t(idx), .time = time});
 
-	return {
-		.aa_mode = aa_mode,
-		.ambient_lighting = ambient_lighting,
-		.camera = camera_control.get_matrices(),
-		.light_direction = light_direction,
-		.light_color = light_color * light_intensity,
-		.turbidity = turbidity,
-		.sky_brightness_mult = sky_brightness_mult,
+	std::vector<gltf::Drawdata> drawdata_list;
+	drawdata_list.emplace_back(model.generate_drawdata(glm::mat4(1.0f), animation_keys));
+
+	const render::Primary_light_params primary_light{
+		.direction = light_direction,
+		.intensity = light_color * light_intensity,
+	};
+
+	const render::Bloom_params bloom_params{
 		.bloom_attenuation = bloom_attenuation,
 		.bloom_strength = bloom_strength,
-		.debug_mode = debug_mode,
-		.csm_linear_blend = csm_linear_blend,
-		.animation_keys = std::move(animation_keys)
 	};
+
+	const render::Shadow_params shadow_params{
+		.csm_linear_blend = csm_linear_blend,
+	};
+
+	const render::Sky_params sky_params{
+		.turbidity = turbidity,
+		.brightness_mult = sky_brightness_mult,
+	};
+
+	const render::Params params{
+		.aa_mode = aa_mode,
+		.camera = camera_control.get_matrices(),
+		.primary_light = primary_light,
+		.ambient = ambient_lighting.get_params(),
+		.bloom = bloom_params,
+		.shadow = shadow_params,
+		.sky = sky_params,
+	};
+
+	return std::make_tuple(params, std::move(drawdata_list));
 }

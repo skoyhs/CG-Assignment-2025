@@ -1,4 +1,5 @@
 #include "logic/camera-control.hpp"
+#include "render/param.hpp"
 
 #include <imgui.h>
 
@@ -26,7 +27,7 @@ namespace logic
 		}
 	}
 
-	Camera::Matrices Camera::get_matrices() noexcept
+	render::Camera_matrices Camera::get_matrices() noexcept
 	{
 		const auto [width, height] = ImGui::GetIO().DisplaySize;
 		const auto aspect_ratio = width / height;
@@ -37,10 +38,10 @@ namespace logic
 		const auto prev_matrix = prev_frame_camera_matrix.value_or(camera_matrix);
 		prev_frame_camera_matrix = camera_matrix;
 
-		return Matrices{
+		return render::Camera_matrices{
 			.view_matrix = view_matrix,
 			.proj_matrix = proj_matrix,
-			.prev_camera_matrix = prev_matrix,
+			.prev_view_proj_matrix = prev_matrix,
 			.eye_position = camera_orbit.eye_position(),
 		};
 	}

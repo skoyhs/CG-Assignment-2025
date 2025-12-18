@@ -1,5 +1,6 @@
 #pragma once
 
+#include "render/param.hpp"
 #include <glm/glm.hpp>
 
 namespace logic
@@ -12,5 +13,7 @@ namespace logic
 		float ao_blend_ratio = 0.017f;
 
 		void control_ui() noexcept;
+
+		render::Ambient_params get_params() const noexcept;
 	};
 }

@@ -124,7 +124,7 @@ namespace gltf
 		Drawdata generate_drawdata(
 			const glm::mat4& model_transform,
 			std::span<const Animation_key> animation
-		) noexcept;
+		) const noexcept;
 
 		///
 		/// @brief Get the list of animations

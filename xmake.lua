@@ -40,4 +40,4 @@ add_requireconfs("boost", {configs={cmake=false}})
 
 -- Rules, Tasks and subprojects
 includes("xmake/rule", "xmake/task/*.lua")
-includes("project", "lib")
+includes("project", "lib", "render")

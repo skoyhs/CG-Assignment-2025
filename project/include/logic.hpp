@@ -3,51 +3,13 @@
 #include "gltf/model.hpp"
 #include "logic/ambient-light.hpp"
 #include "logic/camera-control.hpp"
-#include "renderer/aa.hpp"
+#include "render/param.hpp"
 
 #include <glm/glm.hpp>
 #include <glm/trigonometric.hpp>
 
-struct Draw_feedback
-{
-	size_t total_drawcall_count;
-	size_t visible_drawcall_count;
-	size_t triangle_count;
-};
-
 class Logic
 {
-  public:
-
-	enum class Debug_mode
-	{
-		No_debug,
-		Show_AO,
-		Show_SSGI_trace
-	};
-
-	struct Result
-	{
-		renderer::Antialias::Mode aa_mode;
-		logic::Ambient_light ambient_lighting;
-		logic::Camera::Matrices camera;
-
-		glm::vec3 light_direction;
-		glm::vec3 light_color;
-		float turbidity;
-		float sky_brightness_mult;
-		float bloom_attenuation;
-		float bloom_strength;
-
-		Debug_mode debug_mode;
-
-		float csm_linear_blend;
-
-		std::vector<gltf::Animation_key> animation_keys;
-	};
-
-  private:
-
 	/* Camera */
 
 	logic::Camera camera_control;
@@ -72,7 +34,7 @@ class Logic
 
 	/* Antialiasing */
 
-	renderer::Antialias::Mode aa_mode = renderer::Antialias::Mode::MLAA;
+	render::Antialias_mode aa_mode = render::Antialias_mode::MLAA;
 
 	void antialias_control_ui() noexcept;
 
@@ -82,7 +44,6 @@ class Logic
 
 	/* Debug */
 
-	Debug_mode debug_mode = Debug_mode::No_debug;
 	float time = 0.0f;
 	bool time_run = false;
 
@@ -90,5 +51,5 @@ class Logic
 
   public:
 
-	Result logic(const gltf::Model& model) noexcept;
+	std::tuple<render::Params, std::vector<gltf::Drawdata>> logic(const gltf::Model& model) noexcept;
 };

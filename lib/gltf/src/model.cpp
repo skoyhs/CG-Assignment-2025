@@ -432,7 +432,7 @@ namespace gltf
 	Drawdata Model::generate_drawdata(
 		const glm::mat4& model_transform,
 		std::span<const Animation_key> animation
-	) noexcept
+	) const noexcept
 	{
 		const auto node_overrides = compute_node_overrides(animation);
 		const auto node_world_matrices = compute_node_world_matrices(model_transform, node_overrides);
