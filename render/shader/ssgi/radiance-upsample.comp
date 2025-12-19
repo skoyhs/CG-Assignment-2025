@@ -76,8 +76,53 @@ const vec3 offsets_and_weights[25] = {
         vec3(2, 2, 0.002969016743950497),
     };
 
+shared vec4 shared_normals_roughness[12][12]; // RGB: normals, A: roughness
+shared vec4 shared_metalness_radiance[12][12]; // R: metalness, GBA: Radiance
+shared vec4 shared_albedo_depth[12][12]; // RGB: albedo, A: depth
+
 void main()
 {
+    /* Prefetch */
+
+    const ivec2 workgroup_id = ivec2(gl_WorkGroupID.xy);
+    const ivec2 workgroup_coord = workgroup_id << 4; // * 16
+    const ivec2 local_coord = ivec2(gl_LocalInvocationID.xy); // * 2
+    const ivec2 prefetch_full_coord = workgroup_coord + (local_coord << 1) - 4;
+    const ivec2 prefetch_half_coord = prefetch_full_coord >> 1;
+
+    if (all(lessThan(local_coord, ivec2(12))))
+    {
+        const uvec4 prefetch_lighting_info = texelFetch(lighting_info_tex, prefetch_full_coord, 0);
+        const vec4 prefetch_albedo = texelFetch(albedo_tex, prefetch_full_coord, 0);
+        const vec4 prefetch_depth = texelFetch(depth_tex, prefetch_full_coord, 0);
+        const vec4 prefetch_radiance = texelFetch(low_res_radiance_tex, prefetch_half_coord, 0);
+
+        const GBufferLighting prefetch_lighting = unpack_gbuffer_lighting(
+            prefetch_lighting_info.xy
+        );
+
+        const vec3 albedo = prefetch_albedo.rgb;
+        const vec3 normal = prefetch_lighting.normal;
+        const float roughness = prefetch_lighting.roughness;
+        const float metalness = prefetch_lighting.metalness;
+        const float depth = prefetch_depth.r;
+        const vec3 radiance = prefetch_radiance.rgb;
+
+        shared_normals_roughness[local_coord.y][local_coord.x] = vec4(normal, roughness);
+        shared_metalness_radiance[local_coord.y][local_coord.x] = vec4(
+            metalness,
+            radiance
+        );
+        shared_albedo_depth[local_coord.y][local_coord.x] = vec4(
+            prefetch_albedo.rgb,
+            prefetch_depth.r
+        );
+    }
+
+    barrier();
+
+    /* Compute */
+
     const ivec2 full_coord = ivec2(gl_GlobalInvocationID.xy);
     const ivec2 half_coord = full_coord >> 1;
     const ivec2 full_resolution_ivec2 = ivec2(full_resolution);
@@ -102,39 +147,32 @@ void main()
     {
         const vec3 offset_and_weight = offsets_and_weights[i];
         const ivec2 neighbor_half_coord = half_coord + ivec2(offset_and_weight.xy);
-        const ivec2 neighbor_full_coord = neighbor_half_coord << 1;
+        const ivec2 prefetch_full_coord = (local_coord >> 1) + ivec2(offset_and_weight.xy) + 2;
 
-        if (any(lessThan(neighbor_half_coord, ivec2(0))) ||
-                any(greaterThanEqual(neighbor_half_coord, ivec2(half_resolution))))
-            continue;
+        bool out_of_bound = any(lessThan(neighbor_half_coord, ivec2(0))) ||
+                any(greaterThanEqual(neighbor_half_coord, ivec2(half_resolution)));
+        float out_of_bound_mult = out_of_bound ? 0.0 : 1.0;
 
-        float neighbor_depth = texelFetch(depth_tex, neighbor_full_coord, 0).r;
-        const GBufferLighting neighbor_lighting = unpack_gbuffer_lighting(
-                texelFetch(lighting_info_tex, neighbor_full_coord, 0).xy
-            );
-        const vec3 neighbor_albedo = texelFetch(albedo_tex, neighbor_full_coord, 0).rgb;
-        const vec3 neighbor_radiance = texelFetch(
-                low_res_radiance_tex,
-                neighbor_half_coord,
-                0
-            ).rgb;
+        const vec4 neighbor_normal_roughness = shared_normals_roughness[prefetch_full_coord.y][prefetch_full_coord.x];
+        const vec4 neighbor_metalness_radiance = shared_metalness_radiance[prefetch_full_coord.y][prefetch_full_coord.x];
+        const vec4 neighbor_albedo_depth = shared_albedo_depth[prefetch_full_coord.y][prefetch_full_coord.x];
 
-        const float n_sim = normal_similarity(curr_lighting.normal, neighbor_lighting.normal);
-        const float d_sim = depth_similarity(depth, neighbor_depth);
-        const float a_sim = albedo_similarity(curr_albedo, neighbor_albedo);
+        const float n_sim = normal_similarity(curr_lighting.normal, neighbor_normal_roughness.xyz);
+        const float d_sim = depth_similarity(depth, neighbor_albedo_depth.w);
+        const float a_sim = albedo_similarity(curr_albedo, neighbor_albedo_depth.rgb);
         const float rm_sim = roughness_metalness_similarity(
                 curr_lighting.roughness,
-                neighbor_lighting.roughness,
+                neighbor_normal_roughness.w,
                 curr_lighting.metalness,
-                neighbor_lighting.metalness
+                neighbor_metalness_radiance.x
             );
 
-        float weight = offset_and_weight.z * n_sim * d_sim * a_sim * rm_sim;
+        float weight = (offset_and_weight.z * n_sim) * (d_sim * a_sim) * (rm_sim * out_of_bound_mult);
 
         if (isnan(weight) || isinf(weight))
             weight = 0;
 
-        total_weighted_radiance += neighbor_radiance * weight;
+        total_weighted_radiance += neighbor_metalness_radiance.gba * weight;
         total_weight += weight;
     }
 

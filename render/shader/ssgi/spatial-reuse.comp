@@ -139,6 +139,7 @@ void main()
     const GBufferLighting lighting = unpack_gbuffer_lighting(texelFetch(light_info_tex, full_coord, 0).rg);
     const vec3 W_curr_normal = lighting.normal;
     const vec3 W_view_dir = normalize(W_curr_pos - inv_view_mat[3].xyz);
+    const float distance_tolerance = 0.05 - 0.05 * V_curr_pos.z;
 
     Reservoir reservoir = acquire_previous_reservoir(comp_coord, full_coord, W_curr_pos);
 
@@ -180,12 +181,11 @@ void main()
         const vec3 W_neighbor_pos = W_neighbor_pos_h.xyz / W_neighbor_pos_h.w;
 
         const float normal_similarity = dot(
-                normalize(neighbor_reservoir.z.start_normal),
+                neighbor_reservoir.z.start_normal,
                 W_curr_normal
             );
 
         const float W_distance = length(W_neighbor_pos - W_curr_pos);
-        const float distance_tolerance = 0.05 - 0.05 * V_curr_pos.z;
         const float hemisphere_visibility = dot(
                 normalize(neighbor_reservoir.z.hit_position - W_curr_pos),
                 W_curr_normal
