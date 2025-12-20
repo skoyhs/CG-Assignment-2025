@@ -21,10 +21,11 @@ layout(std140, set = 2, binding = 0) uniform Params
 };
 
 const float NORMAL_SIGMA = 5;
-const float NORMAL_THRES = 0.7;
+const float NORMAL_THRES = 0.8;
 const float DEPTH_SIGMA = 10;
-const float ALBEDO_SIGMA = 5;
+const float ALBEDO_SIGMA = 7;
 const float ROUGHNESS_METALNESS_SIGMA = 5;
+const float BLUR_SIGMA = 2;
 
 float normal_similarity(vec3 n1, vec3 n2)
 {
@@ -50,32 +51,32 @@ float roughness_metalness_similarity(float r1, float r2, float m1, float m2)
     return exp((-distance(r1, r2) - distance(m1, m2)) * ROUGHNESS_METALNESS_SIGMA);
 }
 
-const vec3 offsets_and_weights[25] = {
-        vec3(0, 0, 0.16210282163712664),
-        vec3(0, -1, 0.09832033134884575),
-        vec3(0, 1, 0.09832033134884575),
-        vec3(-1, 1, 0.05963429543618014),
-        vec3(-1, 0, 0.09832033134884575),
-        vec3(-1, -1, 0.05963429543618014),
-        vec3(1, -1, 0.05963429543618014),
-        vec3(1, 0, 0.09832033134884575),
-        vec3(1, 1, 0.05963429543618014),
-        vec3(-2, -2, 0.002969016743950497),
-        vec3(-2, -1, 0.013306209891013651),
-        vec3(-2, 0, 0.021938231279714643),
-        vec3(-2, 1, 0.013306209891013651),
-        vec3(-2, 2, 0.002969016743950497),
-        vec3(-1, -2, 0.013306209891013651),
-        vec3(-1, 2, 0.013306209891013651),
-        vec3(0, -2, 0.021938231279714643),
-        vec3(0, 2, 0.021938231279714643),
-        vec3(1, -2, 0.013306209891013651),
-        vec3(1, 2, 0.013306209891013651),
-        vec3(2, -2, 0.002969016743950497),
-        vec3(2, -1, 0.013306209891013651),
-        vec3(2, 0, 0.021938231279714643),
-        vec3(2, 1, 0.013306209891013651),
-        vec3(2, 2, 0.002969016743950497),
+const ivec2 offsets[25] = {
+        ivec2(0, 0),
+        ivec2(0, -1),
+        ivec2(0, 1),
+        ivec2(-1, 1),
+        ivec2(-1, 0),
+        ivec2(-1, -1),
+        ivec2(1, -1),
+        ivec2(1, 0),
+        ivec2(1, 1),
+        ivec2(-2, -2),
+        ivec2(-2, -1),
+        ivec2(-2, 0),
+        ivec2(-2, 1),
+        ivec2(-2, 2),
+        ivec2(-1, -2),
+        ivec2(-1, 2),
+        ivec2(0, -2),
+        ivec2(0, 2),
+        ivec2(1, -2),
+        ivec2(1, 2),
+        ivec2(2, -2),
+        ivec2(2, -1),
+        ivec2(2, 0),
+        ivec2(2, 1),
+        ivec2(2, 2),
     };
 
 shared vec4 shared_normals_roughness[12][12]; // RGB: normals, A: roughness
@@ -147,9 +148,9 @@ void main()
 
     for (int i = 0; i < 25; i++)
     {
-        const vec3 offset_and_weight = offsets_and_weights[i];
-        const ivec2 neighbor_half_coord = half_coord + ivec2(offset_and_weight.xy);
-        const ivec2 prefetch_full_coord = (local_coord >> 1) + ivec2(offset_and_weight.xy) + 2;
+        const ivec2 offset = offsets[i];
+        const ivec2 neighbor_half_coord = half_coord + offset;
+        const ivec2 prefetch_full_coord = (local_coord >> 1) + offset + 2;
 
         bool out_of_bound = any(lessThan(neighbor_half_coord, ivec2(0))) ||
                 any(greaterThanEqual(neighbor_half_coord, ivec2(half_resolution)));
@@ -169,7 +170,9 @@ void main()
                 neighbor_metalness_radiance.x
             );
 
-        float weight = (offset_and_weight.z * n_sim) * (d_sim * a_sim) * (rm_sim * out_of_bound_mult);
+        const vec2 real_offset = vec2((offset << 1) - (local_coord & 1));
+        const float positional_weight = exp(-dot(real_offset, real_offset) / (2 * BLUR_SIGMA * BLUR_SIGMA));
+        float weight = (positional_weight * n_sim) * (d_sim * a_sim) * (rm_sim * out_of_bound_mult);
 
         if (isnan(weight) || isinf(weight))
             weight = 0;

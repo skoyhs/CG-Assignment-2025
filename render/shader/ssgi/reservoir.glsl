@@ -97,7 +97,7 @@ float p_hat_at(Sample z, vec3 W_pos, vec3 W_normal, vec3 W_view_dir, float rough
     const float n_dot_h = max(dot(W_normal, half_dir), 0.0);
     const float half_distribution = clamp(gltf_microfacet_distribution(n_dot_h, mixed_roughness * mixed_roughness), 0.001, 10.0);
 
-    return dot(z.hit_luminance.rgb, vec3(0.2126, 0.7152, 0.0722)) * half_distribution;
+    return dot(z.hit_luminance.rgb, vec3(0.2126, 0.7152, 0.0722)) * (half_distribution + 1.0 / (2 * PI));
 }
 
 bool update_reservoir(
