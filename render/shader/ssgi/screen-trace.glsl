@@ -9,7 +9,6 @@ precision highp float;
 
 const int MAX_HIZ_LEVEL = 8;
 const int MAX_ITER = 96;
-const int MAX_SKIP_STEPS = 8;
 
 struct Hit_result
 {
@@ -117,7 +116,6 @@ Hit_result raytrace(
 
     int hiz_level = 0;
     int hit_penalty = 0;
-    int hit_skips = 0;
 
     const vec2 resolution_vec = vec2(resolution_ivec);
     const vec2 resolution_vec_inv = 1.0 / resolution_vec;
