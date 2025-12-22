@@ -26,7 +26,7 @@ layout(set = 0, binding = 11) uniform sampler2D blue_noise_tex;
 
 layout(set = 0, binding = 12) uniform usampler2D prev_temporal_reservoir_tex3;
 
-layout(set = 1, binding = 0, rgba32f) uniform writeonly image2D out_reservoir_tex1;
+layout(set = 1, binding = 0, rgba16f) uniform writeonly image2D out_reservoir_tex1;
 layout(set = 1, binding = 1, rgba32ui) uniform writeonly uimage2D out_reservoir_tex2;
 layout(set = 1, binding = 2, rgba32ui) uniform writeonly uimage2D out_reservoir_tex3;
 layout(set = 1, binding = 3, rgba16f) uniform writeonly image2D out_reservoir_tex4;
