@@ -8,12 +8,13 @@ layout(set = 2, binding = 0) uniform sampler2D albedo_tex; // Contains Alpha cha
 
 layout(std140, set = 3, binding = 0) uniform Param
 {
+    float base_color_factor_a;
     float alpha_cutoff;
 };
 
 void main()
 {
     float alpha = texture(albedo_tex, out_uv).a;
-    if (alpha < alpha_cutoff)
+    if (alpha * base_color_factor_a < alpha_cutoff)
         discard;
 }

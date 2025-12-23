@@ -176,15 +176,20 @@ namespace render::pipeline
 
 	}
 
-	Gbuffer_gltf::Frag_param::Frag_param(const gltf::Material_params::Factor& factor) noexcept :
-		base_color_factor(factor.base_color_mult),
-		emissive_factor(factor.emissive_mult),
-		metallic_factor(factor.metallic_mult),
-		roughness_factor(factor.roughness_mult),
-		normal_scale(factor.normal_scale),
-		alpha_cutoff(factor.alpha_cutoff),
-		occlusion_strength(factor.occlusion_strength)
-	{}
+	Gbuffer_gltf::Frag_param Gbuffer_gltf::Frag_param::from(
+		const gltf::Material_params::Factor& factor
+	) noexcept
+	{
+		return Frag_param{
+			.base_color_factor = factor.base_color_mult,
+			.emissive_factor = factor.emissive_mult,
+			.metallic_factor = factor.metallic_mult,
+			.roughness_factor = factor.roughness_mult,
+			.normal_scale = factor.normal_scale,
+			.alpha_cutoff = factor.alpha_cutoff,
+			.occlusion_strength = factor.occlusion_strength
+		};
+	}
 
 	static std::expected<gpu::Graphics_shader, util::Error> create_vertex_shader(
 		SDL_GPUDevice* device
@@ -377,7 +382,7 @@ namespace render::pipeline
 		const gltf::Material_gpu& material
 	) const noexcept
 	{
-		const auto frag_param = Frag_param(material.params.factor);
+		const auto frag_param = Frag_param::from(material.params.factor);
 
 		command_buffer.push_uniform_to_fragment(0, util::as_bytes(frag_param));
 		render_pass.bind_fragment_samplers(
@@ -396,7 +401,7 @@ namespace render::pipeline
 		const gltf::Material_gpu& material
 	) const noexcept
 	{
-		const auto frag_param = Frag_param(material.params.factor);
+		const auto frag_param = Frag_param::from(material.params.factor);
 
 		command_buffer.push_uniform_to_fragment(0, util::as_bytes(frag_param));
 		render_pass.bind_fragment_samplers(

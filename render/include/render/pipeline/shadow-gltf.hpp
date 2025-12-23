@@ -22,8 +22,9 @@ namespace render::pipeline
 			pipelines(std::move(pipelines))
 		{}
 
-		struct alignas(64) Frag_param
+		struct Frag_param
 		{
+			float base_color_factor_a;
 			float alpha_cutoff;
 		};
 
