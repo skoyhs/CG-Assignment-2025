@@ -24,7 +24,8 @@ class Logic
 	float turbidity = 2.0f;
 	float sky_brightness_mult = 0.1f;
 	float bloom_attenuation = 1.2f;
-	float bloom_strength = 0.06f;
+	float bloom_strength = 0.05f;
+	bool use_bloom_mask = true;
 
 	float csm_linear_blend = 0.56f;
 

@@ -278,7 +278,8 @@ namespace render
 	) noexcept
 	{
 		const pipeline::Tonemapping::Param tonemapping_params = {
-			.bloom_strength = params.bloom.bloom_strength
+			.bloom_strength = params.bloom.bloom_strength,
+			.use_bloom_mask = params.function_mask.use_bloom_mask
 		};
 
 		const auto tonemapping_result = pipeline.tonemapping.render(

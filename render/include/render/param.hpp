@@ -39,7 +39,7 @@ namespace render
 	struct Bloom_params
 	{
 		float bloom_attenuation = 1.2;
-		float bloom_strength = 0.06;
+		float bloom_strength = 0.05;
 	};
 
 	struct Shadow_params
@@ -56,6 +56,7 @@ namespace render
 	struct Function_mask
 	{
 		bool ssgi = true;
+		bool use_bloom_mask = true;
 	};
 
 	struct Params

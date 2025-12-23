@@ -20,6 +20,7 @@ namespace render::pipeline
 		{
 			float exposure = 1.0f;
 			float bloom_strength = 1.0f;
+			bool use_bloom_mask;
 		};
 
 		static std::expected<Tonemapping, util::Error> create(
@@ -41,15 +42,21 @@ namespace render::pipeline
 		graphics::Fullscreen_pass<true> fullscreen_pass;
 		gpu::Sampler nearest_sampler;
 		gpu::Sampler linear_sampler;
+		gpu::Texture bloom_mask_dummy;
+		gpu::Texture bloom_mask;
 
 		Tonemapping(
 			graphics::Fullscreen_pass<true> fullscreen_pass,
 			gpu::Sampler nearest_sampler,
-			gpu::Sampler linear_sampler
+			gpu::Sampler linear_sampler,
+			gpu::Texture bloom_mask_dummy,
+			gpu::Texture bloom_mask
 		) :
 			fullscreen_pass(std::move(fullscreen_pass)),
 			nearest_sampler(std::move(nearest_sampler)),
-			linear_sampler(std::move(linear_sampler))
+			linear_sampler(std::move(linear_sampler)),
+			bloom_mask_dummy(std::move(bloom_mask_dummy)),
+			bloom_mask(std::move(bloom_mask))
 		{}
 
 	  public:

@@ -1,10 +1,16 @@
 #include "render/pipeline/tonemapping.hpp"
+#include "asset/graphic-asset.hpp"
 #include "asset/shader/tonemapping.frag.hpp"
+#include "gltf/image.hpp"
 #include "gpu/graphics-pipeline.hpp"
 
 #include "gpu/sampler.hpp"
+#include "graphics/util/quick-create.hpp"
+#include "image/io.hpp"
 #include "render/target/ssgi.hpp"
 #include "util/as-byte.hpp"
+#include "util/asset.hpp"
+#include "zip/zip.hpp"
 #include <SDL3/SDL_gpu.h>
 
 namespace render::pipeline
@@ -39,7 +45,7 @@ namespace render::pipeline
 			device,
 			shader_asset::tonemapping_frag,
 			gpu::Graphics_shader::Stage::Fragment,
-			2,
+			3,
 			0,
 			1,
 			1
@@ -57,10 +63,33 @@ namespace render::pipeline
 		if (!fullscreen_pass)
 			return fullscreen_pass.error().forward("Create tonemapping fullscreen pass failed");
 
+		auto bloom_mask_dummy =
+			gltf::create_placeholder_image(device, glm::vec4(0.0f), "Tonemapping Bloom Mask Dummy");
+		if (!bloom_mask_dummy)
+			return bloom_mask_dummy.error().forward("Create tonemapping bloom mask dummy failed");
+
+		auto bloom_mask =
+			util::get_asset(resource_asset::graphic_asset, "dirt.png")
+				.and_then(zip::Decompress())
+				.and_then(image::load_from_memory<image::Precision::U8, image::Format::RGBA>)
+				.and_then([device](const auto& texture_data) {
+					return graphics::create_texture_from_image(
+						device,
+						{.type = SDL_GPU_TEXTURETYPE_2D,
+						 .format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
+						 .usage = {.sampler = true}},
+						texture_data,
+						"Tonemapping Bloom Mask"
+					);
+				});
+		if (!bloom_mask) return bloom_mask.error().forward("Create tonemapping bloom mask failed");
+
 		return Tonemapping(
 			std::move(*fullscreen_pass),
 			std::move(*nearest_sampler),
-			std::move(*linear_sampler)
+			std::move(*linear_sampler),
+			std::move(*bloom_mask_dummy),
+			std::move(*bloom_mask)
 		);
 	}
 
@@ -75,7 +104,10 @@ namespace render::pipeline
 	{
 		const auto sampler_texture_arr = std::array{
 			light_buffer.light_texture.current().bind_with_sampler(nearest_sampler),
-			bloom.get_upsample_chain(0).bind_with_sampler(linear_sampler)
+			bloom.get_upsample_chain(0).bind_with_sampler(linear_sampler),
+			param.use_bloom_mask
+				? bloom_mask.bind_with_sampler(linear_sampler)
+				: bloom_mask_dummy.bind_with_sampler(linear_sampler)
 		};
 
 		const auto auto_exposure_result_buffer = auto_exposure.get_current_frame().result_buffer;
