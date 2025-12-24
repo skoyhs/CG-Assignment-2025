@@ -17,6 +17,12 @@ namespace gpu
 	{
 	  public:
 
+		Fence(const Fence&) = delete;
+		Fence(Fence&&) = default;
+		Fence& operator=(const Fence&) = delete;
+		Fence& operator=(Fence&&) = default;
+		~Fence() noexcept = default;
+
 		///
 		/// @brief Query if the fence is signaled
 		///

@@ -93,7 +93,7 @@ namespace gltf
 		struct Load_progress
 		{
 			Load_stage stage;
-			std::optional<float> progress;
+			float progress;  // Negative => indeterminate
 		};
 
 		///

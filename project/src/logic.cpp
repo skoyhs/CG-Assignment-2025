@@ -1,4 +1,5 @@
 #include "logic.hpp"
+#include "backend/sdl.hpp"
 #include "render/param.hpp"
 
 #include <imgui.h>
@@ -27,6 +28,7 @@ void Logic::light_control_ui() noexcept
 
 	ImGui::SliderFloat("Bloom 衰减", &bloom_attenuation, 0.0f, 5.0f);
 	ImGui::SliderFloat("Bloom 强度", &bloom_strength, 0.001f, 1.0f, "%.3f", ImGuiSliderFlags_Logarithmic);
+	ImGui::Checkbox("脏镜头效果", &use_bloom_mask);
 }
 
 void Logic::antialias_control_ui() noexcept
@@ -63,9 +65,12 @@ void Logic::debug_control_ui() noexcept
 	if (time_run) time += ImGui::GetIO().DeltaTime;
 }
 
-std::tuple<render::Params, std::vector<gltf::Drawdata>> Logic::logic(const gltf::Model& model) noexcept
+std::tuple<render::Params, std::vector<gltf::Drawdata>> Logic::logic(
+	const backend::SDL_context& context,
+	const gltf::Model& model
+) noexcept
 {
-	camera_control.update();
+	camera_control.update(context);
 
 	if (ImGui::Begin("设置", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
 	{
@@ -116,6 +121,7 @@ std::tuple<render::Params, std::vector<gltf::Drawdata>> Logic::logic(const gltf:
 		.bloom = bloom_params,
 		.shadow = shadow_params,
 		.sky = sky_params,
+		.function_mask = {.use_bloom_mask = use_bloom_mask}
 	};
 
 	return std::make_tuple(params, std::move(drawdata_list));

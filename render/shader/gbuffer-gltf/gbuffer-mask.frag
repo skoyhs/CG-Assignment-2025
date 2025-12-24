@@ -22,7 +22,7 @@ layout(set = 2, binding = 4) uniform sampler2D emissive_tex;
 
 layout(std140, set = 3, binding = 0) uniform Material
 {
-    vec3 base_color_factor;
+    vec4 base_color_factor;
     vec3 emissive_factor;
     float metallic_factor;
     float roughness_factor;
@@ -36,7 +36,7 @@ void main()
     /* Texture Fetch */
 
     vec4 albedo_tex_sample = texture(albedo_tex, in_uv);
-    if (albedo_tex_sample.a < alpha_cutoff) discard;
+    if (albedo_tex_sample.a * base_color_factor.a < alpha_cutoff) discard;
 
     vec2 normal_tex_sample = texture(normal_tex, in_uv).xy;
     vec2 metalness_roughness_tex_sample = texture(metalness_roughness_tex, in_uv).bg;
@@ -46,7 +46,7 @@ void main()
     /* Albedo */
 
     vec3 out_color = pow(
-            albedo_tex_sample.rgb * base_color_factor, // Get color and apply factor
+            albedo_tex_sample.rgb * base_color_factor.rgb, // Get color and apply factor
             vec3(1 / 2.2) // Linear -> SRGB
         );
 

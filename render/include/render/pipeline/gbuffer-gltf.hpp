@@ -20,7 +20,7 @@ namespace render::pipeline
 
 		struct alignas(64) Frag_param
 		{
-			alignas(16) glm::vec3 base_color_factor;
+			alignas(16) glm::vec4 base_color_factor;
 			alignas(16) glm::vec3 emissive_factor;
 			alignas(4) float metallic_factor;
 			alignas(4) float roughness_factor;
@@ -28,12 +28,7 @@ namespace render::pipeline
 			alignas(4) float alpha_cutoff;
 			alignas(4) float occlusion_strength;
 
-			Frag_param(const Frag_param&) = default;
-			Frag_param(Frag_param&&) = default;
-			Frag_param& operator=(const Frag_param&) = default;
-			Frag_param& operator=(Frag_param&&) = default;
-
-			Frag_param(const gltf::Material_params::Factor& factor) noexcept;
+			static Frag_param from(const gltf::Material_params::Factor& factor) noexcept;
 		};
 
 		Gbuffer_gltf(

@@ -318,7 +318,10 @@ namespace render::pipeline
 	{
 		if (material.params.pipeline.alpha_mode != gltf::Alpha_mode::Opaque)
 		{
-			const Frag_param frag_param{.alpha_cutoff = material.params.factor.alpha_cutoff};
+			const Frag_param frag_param{
+				.base_color_factor_a = material.params.factor.base_color_mult.a,
+				.alpha_cutoff = material.params.factor.alpha_cutoff
+			};
 			const std::array textures = {material.base_color};
 
 			command_buffer.push_uniform_to_fragment(0, util::as_bytes(frag_param));
@@ -334,7 +337,10 @@ namespace render::pipeline
 	{
 		if (material.params.pipeline.alpha_mode != gltf::Alpha_mode::Opaque)
 		{
-			const Frag_param frag_param{.alpha_cutoff = material.params.factor.alpha_cutoff};
+			const Frag_param frag_param{
+				.base_color_factor_a = material.params.factor.base_color_mult.a,
+				.alpha_cutoff = material.params.factor.alpha_cutoff
+			};
 			const std::array textures = {material.base_color};
 
 			command_buffer.push_uniform_to_fragment(0, util::as_bytes(frag_param));

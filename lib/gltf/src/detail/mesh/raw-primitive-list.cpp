@@ -5,6 +5,24 @@
 
 namespace gltf::detail::mesh
 {
+	static std::vector<glm::vec2> generate_placeholder_uv(size_t vertex_count) noexcept
+	{
+		const auto radical_inverse = [](uint32_t bits) static noexcept -> float {
+			bits = (bits << 16u) | (bits >> 16u);
+			bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
+			bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
+			bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
+			bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
+			return float(bits) * 2.3283064365386963e-10;
+		};
+
+		return std::views::iota(0u, static_cast<uint32_t>(vertex_count))
+			| std::views::transform([&](uint32_t i) {
+				   return glm::vec2(float(i) / float(vertex_count), radical_inverse(i));
+			   })
+			| std::ranges::to<std::vector>();
+	}
+
 	std::expected<std::vector<Vertex>, util::Error> get_primitive_list(
 		const tinygltf::Model& model,
 		const tinygltf::Primitive& primitive
@@ -39,7 +57,7 @@ namespace gltf::detail::mesh
 
 		auto texcoord0_vertices =
 			unpack_texcoords(model, primitive, index, "TEXCOORD_0")
-				.value_or(std::vector<glm::vec2>(position_vertices.size(), glm::vec2(0.0f, 0.0f)));
+				.value_or(generate_placeholder_uv(position_vertices.size()));
 
 		/* Get Tangent data */
 

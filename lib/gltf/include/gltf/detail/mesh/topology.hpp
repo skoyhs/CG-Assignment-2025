@@ -77,14 +77,15 @@ namespace gltf::detail::mesh
 		{
 			if (vertices.size() < 3)
 				return util::Error("Triangle fan primitive vertex count should be at least 3");
+			const auto tri_count = vertices.size() - 2;
 
 			std::vector<T> result;
 
-			for (const auto idx : std::views::iota(1zu, vertices.size() - 1))
+			for (const auto idx : std::views::iota(0zu, tri_count))
 			{
-				result.push_back(vertices[0]);
-				result.push_back(vertices[idx]);
 				result.push_back(vertices[idx + 1]);
+				result.push_back(vertices[idx + 2]);
+				result.push_back(vertices[0]);
 			}
 
 			return std::move(result);
@@ -94,9 +95,16 @@ namespace gltf::detail::mesh
 		{
 			if (vertices.size() < 3)
 				return util::Error("Triangle strip primitive vertex count should be at least 3");
+			const auto tri_count = vertices.size() - 2;
 
-			std::vector<T> result =
-				vertices | std::views::slide(3) | std::views::join | std::ranges::to<std::vector>();
+			std::vector<T> result;
+
+			for (const auto idx : std::views::iota(0zu, tri_count))
+			{
+				result.push_back(vertices[idx]);
+				result.push_back(vertices[idx + (1 + idx % 2)]);
+				result.push_back(vertices[idx + (2 - idx % 2)]);
+			}
 
 			return std::move(result);
 		}

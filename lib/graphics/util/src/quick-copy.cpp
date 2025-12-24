@@ -14,8 +14,12 @@ namespace graphics
 		const auto copy_result = command_buffer->run_copy_pass(task);
 		if (!copy_result) return copy_result.error().forward("Run copy pass failed");
 
-		const auto submit_result = command_buffer->submit();
+		auto submit_result = command_buffer->submit_and_acquire_fence();
 		if (!submit_result) return submit_result.error().forward("Submit command buffer failed");
+
+		auto fence = std::move(*submit_result);
+		auto wait_result = fence.wait();
+		if (!wait_result) return wait_result.error().forward("Wait for fence failed");
 
 		return {};
 	}

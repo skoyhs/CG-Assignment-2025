@@ -71,7 +71,10 @@ static std::expected<gltf::Model, util::Error> create_scene_from_model(
 			break;
 		}
 
-		ImGui::ProgressBar(current.progress.value_or(-ImGui::GetTime()), ImVec2(300.0f, 0.0f));
+		ImGui::ProgressBar(
+			current.progress < 0 ? (-ImGui::GetTime()) : current.progress,
+			ImVec2(300.0f, 0.0f)
+		);
 	});
 	if (!gltf_result) return gltf_result.error().forward("Load gltf model failed");
 
@@ -110,7 +113,7 @@ static void main_logic(const backend::SDL_context& sdl_context, const std::strin
 		/*===== Logic =====*/
 
 		backend::imgui_new_frame();
-		const auto [params, drawdata] = logic.logic(model);
+		const auto [params, drawdata] = logic.logic(sdl_context, model);
 
 		/*===== Render =====*/
 

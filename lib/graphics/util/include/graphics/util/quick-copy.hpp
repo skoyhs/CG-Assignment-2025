@@ -7,7 +7,11 @@
 
 namespace graphics
 {
-	// Create a command buffer and execute a copy task on it
+	///
+	/// @brief Create a command buffer, perform a copy task, submit and wait for completion.
+	///
+	/// @param task Copy task
+	///
 	std::expected<void, util::Error> execute_copy_task(
 		SDL_GPUDevice* device,
 		const std::function<void(const gpu::Copy_pass&)>& task

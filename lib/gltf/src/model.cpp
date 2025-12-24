@@ -184,7 +184,7 @@ namespace gltf
 	{
 		/* Load Node */
 
-		if (progress) progress->get() = {.stage = Load_stage::Node, .progress = std::nullopt};
+		if (progress) progress->get() = {.stage = Load_stage::Node, .progress = -1};
 
 		auto root_nodes_result = parse_root_nodes(tinygltf_model);
 		if (!root_nodes_result) return root_nodes_result.error().forward("Parse root nodes failed");
@@ -227,21 +227,21 @@ namespace gltf
 
 		/* Load Animations */
 
-		if (progress) progress->get() = {.stage = Load_stage::Animation, .progress = std::nullopt};
+		if (progress) progress->get() = {.stage = Load_stage::Animation, .progress = -1};
 
 		auto animation_result = detail::load_animations(tinygltf_model);
 		if (!animation_result) return animation_result.error().forward("Load animations failed");
 
 		/* Load Skins */
 
-		if (progress) progress->get() = {.stage = Load_stage::Skin, .progress = std::nullopt};
+		if (progress) progress->get() = {.stage = Load_stage::Skin, .progress = -1};
 
 		auto skin_collection_result = Skin_list::from_tinygltf(tinygltf_model);
 		if (!skin_collection_result) return skin_collection_result.error().forward("Load skins failed");
 
 		/* Post Process */
 
-		if (progress) progress->get() = {.stage = Load_stage::Postprocess, .progress = std::nullopt};
+		if (progress) progress->get() = {.stage = Load_stage::Postprocess, .progress = -1};
 
 		Model model(
 			std::move(*material_list_result),

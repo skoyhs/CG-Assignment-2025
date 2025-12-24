@@ -1,5 +1,6 @@
 #include "gpu/command-buffer.hpp"
 #include "gpu/util.hpp"
+#include <utility>
 
 namespace gpu
 {
@@ -294,9 +295,8 @@ namespace gpu
 		}
 
 		cmd_buffer = nullptr;
-		device = nullptr;
 
-		return Fence(device, fence);
+		return Fence(std::exchange(device, nullptr), fence);
 	}
 
 	void Command_buffer::cancel() noexcept
