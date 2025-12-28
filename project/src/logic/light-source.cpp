@@ -33,7 +33,8 @@ namespace logic
 	}
 
 	static std::expected<std::map<std::string, Light_group>, util::Error> get_groups(
-		const nlohmann::json& json
+		const nlohmann::json& json,
+		const gltf::Model& model
 	) noexcept
 	{
 		try
@@ -50,14 +51,47 @@ namespace logic
 				if (!value.contains("display"))
 					return util::Error(std::format("Light group index {} has no display name", key));
 
-				groups.emplace(
-					value["name"].get<std::string>(),
-					Light_group{
-						.display_name = value["display"].get<std::string>(),
-						.lights = {},
-						.enabled = true
+				const auto group_name = value["name"].get<std::string>();
+
+				std::vector<uint32_t> emission_nodes;
+				if (value.contains("emission_nodes"))
+				{
+					const auto nodes = value["emission_nodes"];
+					if (!nodes.is_array())
+						return util::Error(
+							std::format("Light group '{}' emission_nodes is not an array", group_name)
+						);
+
+					for (const auto& [_, node_name] : nodes.items())
+					{
+						if (!node_name.is_string())
+							return util::Error(
+								std::format(
+									"Light group '{}' emission_nodes has non-string entry",
+									group_name
+								)
+							);
+						const auto find_node_result = model.find_node_by_name(node_name.get<std::string>());
+						if (!find_node_result)
+							return util::Error(
+								std::format(
+									"Can't find emission node '{}' for light group '{}'",
+									node_name.get<std::string>(),
+									group_name
+								)
+							);
+						emission_nodes.push_back(*find_node_result);
 					}
-				);
+				}
+
+				auto group = Light_group{
+					.display_name = value["display"].get<std::string>(),
+					.lights = {},
+					.emission_nodes = std::move(emission_nodes),
+					.enabled = true,
+				};
+
+				groups.emplace(value["name"].get<std::string>(), group);
 			}
 
 			return groups;
@@ -137,7 +171,7 @@ namespace logic
 		auto json = std::move(*json_result);
 
 		if (!json.contains("groups")) return util::Error("Light group JSON has no 'groups' field");
-		auto groups_result = get_groups(json["groups"]);
+		auto groups_result = get_groups(json["groups"], model);
 		if (!groups_result) return groups_result.error().forward("Parse light groups failed");
 		auto groups = std::move(*groups_result);
 

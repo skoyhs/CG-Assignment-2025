@@ -20,6 +20,7 @@ namespace logic
 	{
 		std::string display_name;
 		std::vector<Light_source> lights;
+		std::vector<uint32_t> emission_nodes;
 		bool enabled = true;
 	};
 

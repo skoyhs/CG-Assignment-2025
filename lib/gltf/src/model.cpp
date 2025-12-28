@@ -207,7 +207,7 @@ namespace gltf
 			auto light_result = parse_light(tinygltf_light);
 			if (!light_result)
 				return light_result.error().forward(std::format("Parse light failed at index {}", idx));
-			lights.emplace_back(std::move(*light_result));
+			lights.emplace_back(*light_result);
 		}
 
 		/* Load Meshes */
@@ -361,11 +361,20 @@ namespace gltf
 	}
 
 	std::vector<Primitive_drawcall> Model::compute_drawcalls(
-		const std::vector<glm::mat4>& node_world_matrices
+		const std::vector<glm::mat4>& node_world_matrices,
+		std::span<const std::pair<uint32_t, float>> emission_overrides,
+		std::span<const uint32_t> hidden_nodes
 	) const noexcept
 	{
 		std::vector<Primitive_drawcall> drawdata_list;
 		drawdata_list.reserve(primitive_count);
+
+		auto renderable_nodes = this->renderable_nodes;
+		for (const auto hidden_node_index : hidden_nodes) renderable_nodes[hidden_node_index] = false;
+
+		std::vector<float> emission_override_values(nodes.size(), 1.0f);
+		for (const auto& [material_index, emission_value] : emission_overrides)
+			emission_override_values[material_index] = emission_value;
 
 		for (const auto node_index : node_topo_order)
 		{
@@ -433,6 +442,7 @@ namespace gltf
 							.material_index = primitive.material,
 							.transform_or_joint_matrix_offset = world_matrix,
 							.primitive = gen_data,
+							.emissive_multiplier = emission_override_values[node_index],
 						}
 					);
 				}
@@ -444,12 +454,14 @@ namespace gltf
 
 	Drawdata Model::generate_drawdata(
 		const glm::mat4& model_transform,
-		std::span<const Animation_key> animation
+		std::span<const Animation_key> animation,
+		std::span<const std::pair<uint32_t, float>> emission_overrides,
+		std::span<const uint32_t> hidden_nodes
 	) const noexcept
 	{
 		const auto node_overrides = compute_node_overrides(animation);
 		auto node_world_matrices = compute_node_world_matrices(model_transform, node_overrides);
-		auto primitive_list = compute_drawcalls(node_world_matrices);
+		auto primitive_list = compute_drawcalls(node_world_matrices, emission_overrides, hidden_nodes);
 		auto joint_matrices = skin_list.compute_joint_matrices(node_world_matrices);
 
 		return {

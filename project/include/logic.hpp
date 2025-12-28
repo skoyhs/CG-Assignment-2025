@@ -26,6 +26,9 @@ class Logic
 	float bloom_attenuation = 1.2f;
 	float bloom_strength = 0.05f;
 	bool use_bloom_mask = true;
+	bool show_ceiling = true;
+
+	uint32_t ceiling_node_index = 0;
 
 	float csm_linear_blend = 0.56f;
 

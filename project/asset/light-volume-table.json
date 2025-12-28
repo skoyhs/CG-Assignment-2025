@@ -1,10 +1,26 @@
 {
 	"groups": [
 		{ "name": "bed_light", "display": "床头灯" },
-		{ "name": "living_room", "display": "客厅灯" },
-		{ "name": "hall_light", "display": "走廊灯" },
-		{ "name": "kitty_light", "display": "小夜灯" },
-		{ "name": "kitchen_light", "display": "厨房灯" }
+		{
+			"name": "living_room",
+			"display": "客厅灯",
+			"emission_nodes": ["LAPM-light1", "LAPM-light2", "LAPM-light3"]
+		},
+		{
+			"name": "hall_light",
+			"display": "走廊灯",
+			"emission_nodes": ["HallEmission"]
+		},
+		{
+			"name": "kitty_light",
+			"display": "小夜灯",
+			"emission_nodes": ["KittyEmission"]
+		},
+		{
+			"name": "kitchen_light",
+			"display": "厨房灯",
+			"emission_nodes": ["CHROME Lamp 5"]
+		}
 	],
 	"lights": [
 		{

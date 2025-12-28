@@ -24,6 +24,9 @@ void Logic::light_control_ui() noexcept
 	ImGui::SliderFloat("Bloom 衰减", &bloom_attenuation, 0.0f, 5.0f);
 	ImGui::SliderFloat("Bloom 强度", &bloom_strength, 0.001f, 1.0f, "%.3f", ImGuiSliderFlags_Logarithmic);
 	ImGui::Checkbox("脏镜头效果", &use_bloom_mask);
+
+	ImGui::Separator();
+	ImGui::Checkbox("显示天花板", &show_ceiling);
 }
 
 void Logic::antialias_control_ui() noexcept
@@ -115,15 +118,18 @@ std::expected<Logic, util::Error> Logic::create(SDL_GPUDevice* device, const glt
 	const auto door3_node_index = model.find_node_by_name("Door3-Handle");
 	const auto door4_node_index = model.find_node_by_name("Door4-Handle");
 	const auto door5_node_index = model.find_node_by_name("Door5-Handle");
+	const auto ceiling_node_index = model.find_node_by_name("Ceiling");
 
 	if (!door1_node_index || !door2_node_index || !door3_node_index || !door4_node_index || !door5_node_index)
 		return util::Error("Failed to find door handle nodes by name");
+	if (!ceiling_node_index) return util::Error("Failed to find ceiling node by name");
 
 	logic.door1_node_index = *door1_node_index;
 	logic.door2_node_index = *door2_node_index;
 	logic.door3_node_index = *door3_node_index;
 	logic.door4_node_index = *door4_node_index;
 	logic.door5_node_index = *door5_node_index;
+	logic.ceiling_node_index = *ceiling_node_index;
 
 	auto load_lights_result = logic::load_light_groups(device, model);
 	if (!load_lights_result) return load_lights_result.error().forward("Load light groups failed");
@@ -165,7 +171,22 @@ std::tuple<render::Params, std::vector<gltf::Drawdata>, std::vector<render::draw
 	animation_keys.emplace_back("CurtainLeft", curtain_left_position * max_curtain_time);
 	animation_keys.emplace_back("CurtainRight", curtain_right_position * max_curtain_time);
 
-	auto main_drawdata = model.generate_drawdata(glm::mat4(1.0f), animation_keys);
+	std::vector<uint32_t> hidden_nodes;
+	if (!show_ceiling) hidden_nodes.push_back(ceiling_node_index);
+
+	std::vector<std::pair<uint32_t, float>> emission_overrides;
+	for (const auto& light_group : light_groups | std::views::values)
+	{
+		emission_overrides.append_range(
+			light_group.emission_nodes
+			| std::views::transform([mult = light_group.enabled ? 1.0f : 0.0f](uint32_t node_index) {
+				  return std::make_pair(node_index, mult);
+			  })
+		);
+	}
+
+	auto main_drawdata =
+		model.generate_drawdata(glm::mat4(1.0f), animation_keys, emission_overrides, hidden_nodes);
 
 	for (const auto [idx, door_node_index] :
 		 std::to_array(
