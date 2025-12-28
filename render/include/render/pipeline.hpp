@@ -10,6 +10,7 @@
 #include "render/pipeline/directional-light.hpp"
 #include "render/pipeline/gbuffer-gltf.hpp"
 #include "render/pipeline/hiz-generator.hpp"
+#include "render/pipeline/light.hpp"
 #include "render/pipeline/shadow-gltf.hpp"
 #include "render/pipeline/sky-preetham.hpp"
 #include "render/pipeline/ssgi.hpp"
@@ -31,6 +32,7 @@ namespace render
 		pipeline::Sky_preetham sky_preetham;
 		pipeline::SSGI ssgi;
 		pipeline::Tonemapping tonemapping;
+		pipeline::Light point_light;
 
 		graphics::Renderpass_copy depth_to_color_copier;
 

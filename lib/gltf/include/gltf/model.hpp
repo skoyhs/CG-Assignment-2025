@@ -6,11 +6,11 @@
 #pragma once
 
 #include "animation.hpp"
+#include "gltf/light.hpp"
 #include "gltf/skin.hpp"
 #include "material.hpp"
 #include "mesh.hpp"
 #include "node.hpp"
-// #include "skin.hpp"
 
 #include <atomic>
 #include <cstdint>
@@ -47,7 +47,7 @@ namespace gltf
 	struct Drawdata
 	{
 		// Drawcall list
-		std::vector<Primitive_drawcall> drawcalls;
+		std::vector<Primitive_drawcall> primitive_drawcalls;
 
 		std::vector<glm::mat4> node_matrices;
 
@@ -70,6 +70,7 @@ namespace gltf
 		std::vector<Animation> animations;  // List of animations
 		std::vector<uint32_t> root_nodes;   // List of root node indices
 		Skin_list skin_list;                // Collection of skins
+		std::vector<Light> lights;          // List of lights
 
 		/*===== Accelerating Structures =====*/
 
@@ -143,6 +144,13 @@ namespace gltf
 		///
 		std::optional<uint32_t> find_node_by_name(const std::string& name) const noexcept;
 
+		///
+		/// @brief Get (node_index, Light) by name
+		///
+		/// @return If found, a (node_index, Light) pair
+		///
+		std::optional<std::pair<uint32_t, Light>> find_light_by_name(const std::string& name) const noexcept;
+
 	  private:
 
 		/*===== Load Stage =====*/
@@ -181,7 +189,8 @@ namespace gltf
 			std::vector<Node> nodes,
 			std::vector<Animation> animations,
 			std::vector<uint32_t> root_nodes,
-			Skin_list skin_collection
+			Skin_list skin_collection,
+			std::vector<Light> lights
 		) noexcept;
 
 	  public:

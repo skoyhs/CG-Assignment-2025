@@ -105,8 +105,8 @@ Reservoir acquire_previous_reservoir(ivec2 comp_coord, ivec2 full_coord, vec3 W_
     return reservoir;
 }
 
-const float sigma = 4; 
-const int maxOffset = 15; 
+const float sigma = 10; 
+const int maxOffset = 30; 
 
 void main()
 {
@@ -207,7 +207,7 @@ void main()
             W_curr_normal,
             W_view_dir,
             lighting.roughness
-        ) / clamp(jacobian, 0.5, 10.0);
+        ) / clamp(jacobian, 1.0, 5.0);
 
         neighbor_reservoir.z.start_position = W_curr_pos;
         neighbor_reservoir.z.start_normal = W_curr_normal;

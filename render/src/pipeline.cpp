@@ -46,6 +46,10 @@ namespace render
 		auto ssgi_pipeline = pipeline::SSGI::create(context.device);
 		if (!ssgi_pipeline) return ssgi_pipeline.error().forward("Create SSGI pipeline failed");
 
+		auto point_light_pipeline = pipeline::Light::create(context.device);
+		if (!point_light_pipeline)
+			return point_light_pipeline.error().forward("Create Point Light pipeline failed");
+
 		auto depth_to_color_copier =
 			graphics::Renderpass_copy::create(context.device, 1, target::Gbuffer::depth_value_format);
 		if (!depth_to_color_copier)
@@ -64,6 +68,7 @@ namespace render
 			.sky_preetham = std::move(*sky_pipeline),
 			.ssgi = std::move(*ssgi_pipeline),
 			.tonemapping = std::move(*tonemapping_pipeline),
+			.point_light = std::move(*point_light_pipeline),
 			.depth_to_color_copier = std::move(*depth_to_color_copier)
 		};
 	}

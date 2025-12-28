@@ -5,12 +5,19 @@
 #include <glm/glm.hpp>
 
 #include "gltf/model.hpp"
+#include "render/drawdata/light.hpp"
 #include "render/param.hpp"
 #include "render/pipeline.hpp"
 #include "render/target.hpp"
 
 namespace render
 {
+	struct Drawdata
+	{
+		std::span<const gltf::Drawdata> models;
+		std::span<const drawdata::Light> lights;
+	};
+
 	class Renderer
 	{
 	  public:
@@ -19,7 +26,7 @@ namespace render
 
 		std::expected<void, util::Error> render(
 			const backend::SDL_context& sdl_context,
-			std::span<const gltf::Drawdata> drawdata_list,
+			Drawdata drawdata,
 			const Params& params
 		) noexcept;
 
@@ -55,6 +62,15 @@ namespace render
 		std::expected<void, util::Error> render_lighting(
 			const gpu::Command_buffer& command_buffer,
 			const drawdata::Shadow& shadow_drawdata,
+			const Params& params,
+			glm::u32vec2 swapchain_size
+		) const noexcept;
+
+		std::expected<void, util::Error> render_lights(
+			const gpu::Command_buffer& command_buffer,
+			const target::Gbuffer& gbuffer_target,
+			const target::Light_buffer& light_buffer_target,
+			std::span<const drawdata::Light> lights,
 			const Params& params,
 			glm::u32vec2 swapchain_size
 		) const noexcept;

@@ -1,11 +1,13 @@
 #include "render.hpp"
 #include "backend/imgui.hpp"
+#include "render/const-params.hpp"
 #include "render/drawdata/gbuffer.hpp"
 #include "render/drawdata/shadow.hpp"
 #include "render/pass.hpp"
 #include "render/pipeline/ambient-light.hpp"
 #include "render/pipeline/auto-exposure.hpp"
 #include "render/pipeline/directional-light.hpp"
+#include "render/pipeline/light.hpp"
 #include "render/pipeline/sky-preetham.hpp"
 #include "render/pipeline/tonemapping.hpp"
 #include "util/error.hpp"
@@ -153,18 +155,20 @@ namespace render
 			.shadow_matrix_level2 = shadow_drawdata.get_vp_matrix(2),
 			.eye_position = params.camera.eye_position,
 			.light_direction = params.primary_light.direction,
-			.light_color = params.primary_light.intensity
+			.light_color = params.primary_light.intensity / REF_LUMINANCE
 		};
 
-		const pipeline::Ambient_light::Param ambient_light_params =
-			{.ambient_intensity = params.ambient.intensity, .ao_strength = params.ambient.ao_strength};
+		const pipeline::Ambient_light::Param ambient_light_params = {
+			.ambient_intensity = params.ambient.intensity / REF_LUMINANCE,
+			.ao_strength = params.ambient.ao_strength
+		};
 
 		const pipeline::Sky_preetham::Params sky_params = {
 			.camera_mat_inv = glm::inverse(params.camera.proj_matrix * params.camera.view_matrix),
 			.screen_size = swapchain_size,
 			.eye_position = params.camera.eye_position,
 			.sun_direction = params.primary_light.direction,
-			.sun_intensity = params.primary_light.intensity * params.sky.brightness_mult,
+			.sun_intensity = params.primary_light.intensity * params.sky.brightness_mult / REF_LUMINANCE,
 			.turbidity = params.sky.turbidity
 		};
 
@@ -191,6 +195,29 @@ namespace render
 		pipeline.sky_preetham.render(command_buffer, *lighting_pass, sky_params);
 
 		lighting_pass->end();
+		return {};
+	}
+
+	std::expected<void, util::Error> Renderer::render_lights(
+		const gpu::Command_buffer& command_buffer,
+		const target::Gbuffer& gbuffer_target,
+		const target::Light_buffer& light_buffer_target,
+		std::span<const drawdata::Light> lights,
+		const Params& params,
+		glm::u32vec2 swapchain_size
+	) const noexcept
+	{
+		const pipeline::Light::Param point_light_param = {
+			.camera_view_projection = params.camera.proj_matrix * params.camera.view_matrix,
+			.eye_position = params.camera.eye_position,
+			.screen_size = swapchain_size
+		};
+
+		const auto render_result =
+			pipeline.point_light
+				.render(command_buffer, gbuffer_target, light_buffer_target, lights, point_light_param);
+		if (!render_result) return render_result.error().forward("Render primary point light failed");
+
 		return {};
 	}
 
@@ -322,13 +349,13 @@ namespace render
 
 	std::expected<void, util::Error> Renderer::render(
 		const backend::SDL_context& sdl_context,
-		std::span<const gltf::Drawdata> drawdata_list,
+		Drawdata drawdata,
 		const Params& params
 	) noexcept
 	{
 		/* Preparation */
 
-		auto prepare_result = prepare_drawdata(drawdata_list, params);
+		auto prepare_result = prepare_drawdata(drawdata.models, params);
 		if (!prepare_result) return prepare_result.error().forward("Prepare drawdata failed");
 		const auto [gbuffer_drawdata, shadow_drawdata] = std::move(*prepare_result);
 
@@ -360,7 +387,7 @@ namespace render
 
 		/* Copy */
 
-		const auto copy_result = copy_resources(*command_buffer, drawdata_list);
+		const auto copy_result = copy_resources(*command_buffer, drawdata.models);
 		if (!copy_result) return copy_result.error().forward("Copy resources failed");
 
 		/* Render */
@@ -382,6 +409,17 @@ namespace render
 		const auto lighting_result =
 			render_lighting(*command_buffer, shadow_drawdata, params, swapchain_size);
 		if (!lighting_result) return lighting_result.error().forward("Render lighting failed");
+
+		const auto primary_lights_result = render_lights(
+			*command_buffer,
+			target.gbuffer_target,
+			target.light_buffer_target,
+			drawdata.lights,
+			params,
+			swapchain_size
+		);
+		if (!primary_lights_result)
+			return primary_lights_result.error().forward("Render primary lights failed");
 
 		if (params.function_mask.ssgi)
 		{

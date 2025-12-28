@@ -21,7 +21,7 @@ namespace render::pipeline
 			glm::mat4 shadow_matrix_level2;
 			alignas(16) glm::vec3 eye_position;
 			alignas(16) glm::vec3 light_direction;
-			alignas(16) glm::vec3 light_color;
+			alignas(16) glm::vec3 light_color;  // in reference luminance
 		};
 
 		static std::expected<Directional_light, util::Error> create(SDL_GPUDevice* device) noexcept;

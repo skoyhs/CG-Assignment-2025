@@ -3,6 +3,7 @@
 #include "graphics/culling.hpp"
 
 #include <algorithm>
+#include <cstdint>
 #include <queue>
 #include <ranges>
 #include <set>
@@ -182,7 +183,7 @@ namespace gltf
 		const std::optional<std::reference_wrapper<std::atomic<Load_progress>>>& progress
 	) noexcept
 	{
-		/* Load Node */
+		/* Load Node & Lights */
 
 		if (progress) progress->get() = {.stage = Load_stage::Node, .progress = -1};
 
@@ -198,6 +199,15 @@ namespace gltf
 			if (!node_result) return node_result.error().forward("Create node from tinygltf failed");
 
 			nodes.emplace_back(std::move(*node_result));
+		}
+
+		std::vector<Light> lights;
+		for (const auto& [idx, tinygltf_light] : tinygltf_model.lights | std::views::enumerate)
+		{
+			auto light_result = parse_light(tinygltf_light);
+			if (!light_result)
+				return light_result.error().forward(std::format("Parse light failed at index {}", idx));
+			lights.emplace_back(std::move(*light_result));
 		}
 
 		/* Load Meshes */
@@ -249,7 +259,8 @@ namespace gltf
 			std::move(nodes),
 			std::move(*animation_result),
 			std::move(*root_nodes_result),
-			std::move(*skin_collection_result)
+			std::move(*skin_collection_result),
+			std::move(lights)
 		);
 
 		model.compute_node_parents();
@@ -273,7 +284,8 @@ namespace gltf
 		std::vector<Node> nodes,
 		std::vector<Animation> animations,
 		std::vector<uint32_t> root_nodes,
-		Skin_list skin_collection
+		Skin_list skin_collection,
+		std::vector<Light> lights
 	) noexcept :
 		material_list(std::move(material_list)),
 		meshes(std::move(meshes)),
@@ -281,6 +293,7 @@ namespace gltf
 		animations(std::move(animations)),
 		root_nodes(std::move(root_nodes)),
 		skin_list(std::move(skin_collection)),
+		lights(std::move(lights)),
 		primitive_count(
 			std::ranges::fold_left(
 				meshes | std::views::transform([](const Mesh_gpu& mesh) { return mesh.primitives.size(); }),
@@ -357,8 +370,9 @@ namespace gltf
 		for (const auto node_index : node_topo_order)
 		{
 			const auto& node = nodes[node_index];
-			if (!renderable_nodes[node_index] || !node.mesh.has_value()) [[unlikely]]
-				continue;
+			const glm::mat4& world_matrix = node_world_matrices[node_index];
+
+			if (!renderable_nodes[node_index] || !node.mesh.has_value()) continue;
 
 			const auto& mesh = meshes[node.mesh.value()];
 
@@ -405,7 +419,6 @@ namespace gltf
 			}
 			else  // Not Rigged
 			{
-				const glm::mat4& world_matrix = node_world_matrices[node_index];
 
 				for (const auto& primitive : mesh.primitives)
 				{
@@ -436,11 +449,11 @@ namespace gltf
 	{
 		const auto node_overrides = compute_node_overrides(animation);
 		auto node_world_matrices = compute_node_world_matrices(model_transform, node_overrides);
-		auto drawdata_list = compute_drawcalls(node_world_matrices);
+		auto primitive_list = compute_drawcalls(node_world_matrices);
 		auto joint_matrices = skin_list.compute_joint_matrices(node_world_matrices);
 
 		return {
-			.drawcalls = std::move(drawdata_list),
+			.primitive_drawcalls = std::move(primitive_list),
 			.node_matrices = std::move(node_world_matrices),
 			.deferred_skin_resource = joint_matrices.empty()
 				? nullptr
@@ -463,6 +476,19 @@ namespace gltf
 		if (found.size() != 1) return std::nullopt;
 
 		return std::get<0>(found[0]);
+	}
+
+	std::optional<std::pair<uint32_t, Light>> Model::find_light_by_name(
+		const std::string& name
+	) const noexcept
+	{
+		return find_node_by_name(name).and_then(
+			[this](uint32_t node_index) -> std::optional<std::pair<uint32_t, Light>> {
+				const auto& node = nodes[node_index];
+				if (!node.light.has_value()) return std::nullopt;
+				return std::make_pair(node_index, lights[*node.light]);
+			}
+		);
 	}
 
 	std::expected<tinygltf::Model, util::Error> load_tinygltf_model(
