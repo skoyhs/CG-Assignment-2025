@@ -1,8 +1,10 @@
 #pragma once
 
 #include "gltf/model.hpp"
-#include "logic/ambient-light.hpp"
 #include "logic/camera-control.hpp"
+#include "logic/light-source.hpp"
+#include "render/drawdata/light.hpp"
+#include "render/light-volume.hpp"
 #include "render/param.hpp"
 
 #include <glm/glm.hpp>
@@ -20,16 +22,15 @@ class Logic
 	float light_pitch = glm::radians(35.0);
 
 	glm::vec3 light_color = {1.0, 1.0, 1.0};
-	float light_intensity = 20.0;
-	float turbidity = 2.0f;
-	float sky_brightness_mult = 0.1f;
+	float light_intensity = 80000.0;
 	float bloom_attenuation = 1.2f;
 	float bloom_strength = 0.05f;
 	bool use_bloom_mask = true;
+	bool show_ceiling = true;
+
+	uint32_t ceiling_node_index = 0;
 
 	float csm_linear_blend = 0.56f;
-
-	logic::Ambient_light ambient_lighting;
 
 	void light_control_ui() noexcept;
 
@@ -66,18 +67,23 @@ class Logic
 
 	void animation_control_ui() noexcept;
 
+	/* Lights */
+
+	std::map<std::string, logic::Light_group> light_groups;
+	void light_source_control_ui() noexcept;
+
 	Logic() = default;
 
   public:
 
-	Logic(const Logic&) = default;
+	Logic(const Logic&) = delete;
 	Logic(Logic&&) = default;
 	Logic& operator=(const Logic&) = delete;
 	Logic& operator=(Logic&&) = delete;
 
-	static std::expected<Logic, util::Error> create(const gltf::Model& model) noexcept;
+	static std::expected<Logic, util::Error> create(SDL_GPUDevice* device, const gltf::Model& model) noexcept;
 
-	std::tuple<render::Params, std::vector<gltf::Drawdata>> logic(
+	std::tuple<render::Params, std::vector<gltf::Drawdata>, std::vector<render::drawdata::Light>> logic(
 		const backend::SDL_context& context,
 		const gltf::Model& model
 	) noexcept;

@@ -232,7 +232,7 @@ namespace render::pipeline
 			5,
 			0,
 			0,
-			1
+			2
 		);
 	}
 
@@ -247,7 +247,7 @@ namespace render::pipeline
 			5,
 			0,
 			0,
-			1
+			2
 		);
 	}
 
@@ -436,6 +436,8 @@ namespace render::pipeline
 		const gltf::Primitive_drawcall& drawcall
 	) const noexcept
 	{
+		const auto per_object_param = Per_object_param::from(drawcall);
+		command_buffer.push_uniform_to_fragment(1, util::as_bytes(per_object_param));
 		const auto transform = drawcall.get_world_transform();
 		command_buffer.push_uniform_to_vertex(1, util::as_bytes(transform));
 
@@ -451,6 +453,8 @@ namespace render::pipeline
 		const gltf::Primitive_drawcall& drawcall
 	) const noexcept
 	{
+		const auto per_object_param = Per_object_param::from(drawcall);
+		command_buffer.push_uniform_to_fragment(1, util::as_bytes(per_object_param));
 		command_buffer.push_uniform_to_vertex(1, util::as_bytes(drawcall.get_joint_matrix_offset()));
 
 		render_pass.bind_vertex_buffers(0, drawcall.primitive.vertex_buffer_binding);
@@ -489,5 +493,12 @@ namespace render::pipeline
 			}
 		}
 		command_buffer.pop_debug_group();
+	}
+
+	Gbuffer_gltf::Per_object_param Gbuffer_gltf::Per_object_param::from(
+		const gltf::Primitive_drawcall& drawcall
+	) noexcept
+	{
+		return Per_object_param{.emissive_multiplier = drawcall.emissive_multiplier};
 	}
 }

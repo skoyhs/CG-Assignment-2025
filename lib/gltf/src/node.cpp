@@ -33,6 +33,13 @@ namespace gltf
 			result.skin = node.skin;
 		}
 
+		if (node.light >= 0)
+		{
+			if (std::cmp_greater_equal(static_cast<uint32_t>(node.light), model.lights.size()))
+				return util::Error(std::format("Node has invalid light index {}", node.light));
+			result.light = node.light;
+		}
+
 		if (node.matrix.size() == 16)
 		{
 			glm::mat4 matrix;

@@ -3,10 +3,7 @@
 #include <SDL3/SDL_video.h>
 #include <future>
 #include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/matrix.hpp>
 #include <imgui.h>
-#include <iostream>
 #include <print>
 
 #include "backend/imgui.hpp"
@@ -96,11 +93,13 @@ static void main_logic(const backend::SDL_context& sdl_context, const std::strin
 
 	auto model = create_scene_from_model(sdl_context, model_path) | util::unwrap("Load 3D model failed");
 
-	auto logic = Logic::create(model) | util::unwrap("Create logic failed");
+	auto logic = Logic::create(sdl_context.device, model) | util::unwrap("Create logic failed");
 
 	/* 主循环 */
 
 	bool quit = false;
+	bool fullscreen = false;
+
 	while (!quit)
 	{
 		SDL_Event event;
@@ -108,14 +107,22 @@ static void main_logic(const backend::SDL_context& sdl_context, const std::strin
 		{
 			backend::imgui_handle_event(&event);
 			if (event.type == SDL_EVENT_QUIT) quit = true;
+
+			if (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_F11)
+			{
+				fullscreen = !fullscreen;
+				SDL_SetWindowFullscreen(sdl_context.window, fullscreen);
+			}
 		}
 
 		/*===== Logic =====*/
 
 		backend::imgui_new_frame();
-		const auto [params, drawdata] = logic.logic(sdl_context, model);
+		const auto [params, model_drawdata, primary_point_lights] = logic.logic(sdl_context, model);
 
 		/*===== Render =====*/
+
+		const render::Drawdata drawdata = {.models = model_drawdata, .lights = primary_point_lights};
 
 		render_resource.render(sdl_context, drawdata, params) | util::unwrap("Render frame failed");
 	}

@@ -28,5 +28,6 @@ target("render")
         "lib::graphics.camera",
         "lib::graphics.geometry",
         "lib::graphics.util",
+        "lib::wavefront",
         {public=true}
     )

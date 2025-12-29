@@ -31,6 +31,13 @@ namespace render::pipeline
 			static Frag_param from(const gltf::Material_params::Factor& factor) noexcept;
 		};
 
+		struct Per_object_param
+		{
+			alignas(4) float emissive_multiplier;
+
+			static Per_object_param from(const gltf::Primitive_drawcall& drawcall) noexcept;
+		};
+
 		Gbuffer_gltf(
 			std::map<std::pair<gltf::Pipeline_mode, bool>, std::unique_ptr<Gltf_pipeline>> pipelines
 		) noexcept :

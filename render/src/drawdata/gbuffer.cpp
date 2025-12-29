@@ -31,7 +31,7 @@ namespace render::drawdata
 		);
 
 		auto visible_nonrigged_drawcalls =
-			drawdata.drawcalls | std::views::filter([this](const auto& drawcall) -> bool {
+			drawdata.primitive_drawcalls | std::views::filter([this](const auto& drawcall) -> bool {
 				return graphics::box_in_frustum(
 					drawcall.world_position_min,
 					drawcall.world_position_max,

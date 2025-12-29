@@ -16,7 +16,7 @@ namespace render::pipeline
 
 		struct Param
 		{
-			glm::vec3 ambient_intensity;
+			glm::vec3 ambient_intensity;  // in reference luminance
 			float ao_strength;
 		};
 

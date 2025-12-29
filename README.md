@@ -13,6 +13,7 @@ This repository contains the source code for SYSU Computer Graphics course assig
 - Frustum culling for camera and shadow views
 - BC3, BC5 and BC7 image compression formats
 - Screen space ReSTIR GI
+- Multi light source rendering, supports point and spot lights. Drawn using light volume.
 
 ## Current Stage
 This project is currently under "Render-Tech Dev" stage. No game/interaction logic is implemented yet.

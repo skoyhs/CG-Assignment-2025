@@ -6,11 +6,11 @@
 #pragma once
 
 #include "animation.hpp"
+#include "gltf/light.hpp"
 #include "gltf/skin.hpp"
 #include "material.hpp"
 #include "mesh.hpp"
 #include "node.hpp"
-// #include "skin.hpp"
 
 #include <atomic>
 #include <cstdint>
@@ -27,6 +27,8 @@ namespace gltf
 		std::optional<uint32_t> material_index;
 		std::variant<glm::mat4, uint32_t> transform_or_joint_matrix_offset;
 		Primitive_mesh_binding primitive;
+
+		float emissive_multiplier = 1.0f;
 
 		FORCE_INLINE bool is_rigged() const noexcept
 		{
@@ -47,7 +49,7 @@ namespace gltf
 	struct Drawdata
 	{
 		// Drawcall list
-		std::vector<Primitive_drawcall> drawcalls;
+		std::vector<Primitive_drawcall> primitive_drawcalls;
 
 		std::vector<glm::mat4> node_matrices;
 
@@ -70,6 +72,7 @@ namespace gltf
 		std::vector<Animation> animations;  // List of animations
 		std::vector<uint32_t> root_nodes;   // List of root node indices
 		Skin_list skin_list;                // Collection of skins
+		std::vector<Light> lights;          // List of lights
 
 		/*===== Accelerating Structures =====*/
 
@@ -121,11 +124,15 @@ namespace gltf
 		///
 		/// @param model_transform Root model transform matrix
 		/// @param animation Animation keys to apply
+		/// @param emission_overrides Overrides for emissive factors (node_index, multiplier)
+		/// @param hidden_nodes List of node indices to hide
 		/// @return Drawdata, where drawcall's matrix denotes `Model->World` transform
 		///
 		Drawdata generate_drawdata(
 			const glm::mat4& model_transform,
-			std::span<const Animation_key> animation
+			std::span<const Animation_key> animation,
+			std::span<const std::pair<uint32_t, float>> emission_overrides,
+			std::span<const uint32_t> hidden_nodes
 		) const noexcept;
 
 		///
@@ -142,6 +149,13 @@ namespace gltf
 		/// @return If found and unique, the node index; otherwise, nullopt
 		///
 		std::optional<uint32_t> find_node_by_name(const std::string& name) const noexcept;
+
+		///
+		/// @brief Get (node_index, Light) by name
+		///
+		/// @return If found, a (node_index, Light) pair
+		///
+		std::optional<std::pair<uint32_t, Light>> find_light_by_name(const std::string& name) const noexcept;
 
 	  private:
 
@@ -172,7 +186,9 @@ namespace gltf
 
 		// Generate drawcalls from world matrices
 		std::vector<Primitive_drawcall> compute_drawcalls(
-			const std::vector<glm::mat4>& node_world_matrices
+			const std::vector<glm::mat4>& node_world_matrices,
+			std::span<const std::pair<uint32_t, float>> emission_overrides,
+			std::span<const uint32_t> hidden_nodes
 		) const noexcept;
 
 		Model(
@@ -181,7 +197,8 @@ namespace gltf
 			std::vector<Node> nodes,
 			std::vector<Animation> animations,
 			std::vector<uint32_t> root_nodes,
-			Skin_list skin_collection
+			Skin_list skin_collection,
+			std::vector<Light> lights
 		) noexcept;
 
 	  public:

@@ -1,7 +1,5 @@
 #pragma once
 
-#include "gpu/command-buffer.hpp"
-#include "gpu/render-pass.hpp"
 #include <glm/glm.hpp>
 
 namespace render
@@ -30,7 +28,7 @@ namespace render
 
 	struct Ambient_params
 	{
-		glm::vec3 intensity = glm::vec3(0.03);
+		glm::vec3 intensity = glm::vec3(50);
 		float ao_radius = 70.0;
 		float ao_blend_ratio = 0.017;
 		float ao_strength = 1.0;
@@ -70,4 +68,7 @@ namespace render
 		Sky_params sky = {};
 		Function_mask function_mask = {};
 	};
+
+	struct Light_drawcall
+	{};
 }

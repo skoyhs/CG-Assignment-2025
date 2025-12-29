@@ -8,7 +8,7 @@ namespace util
 	) noexcept
 	{
 		const auto find = data.find(name);
-		if (find == data.end()) return util::Error(std::format("未找到资源: {}", name));
+		if (find == data.end()) return util::Error(std::format("Resource not found: {}", name));
 		return find->second;
 	}
 }
